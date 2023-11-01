@@ -1,0 +1,44 @@
+commit bd17c2a4e237ca1f38544db65053ecfea6054009
+Author: Tomas Korbar <tkorbar@redhat.com>
+Date:   Thu Sep 24 13:17:45 2020 +0200
+
+    Skip files for transfer that has been truncated during negotiation
+
+diff --git a/rsync.1 b/rsync.1
+index 6cabd44..855dd47 100644
+--- a/rsync.1
++++ b/rsync.1
+@@ -1004,8 +1004,10 @@ This causes rsync to update a file by appending data onto
+ the end of the file, which presumes that the data that already exists on
+ the receiving side is identical with the start of the file on the sending
+ side.  If a file needs to be transferred and its size on the receiver is
+-the same or longer than the size on the sender, the file is skipped.  This
+-does not interfere with the updating of a file\(cq\&s non\-content attributes
++the same or longer than the size on the sender, the file is skipped. It
++also skips any files whose size on the sending side gets shorter during
++the send negotiations (rsync warns about a "diminished" file when this
++happens). This does not interfere with the updating of a file\(cq\&s non\-content attributes
+ (e.g. permissions, ownership, etc.) when the file does not need to be
+ transferred, nor does it affect the updating of any non\-regular files.
+ Implies \fB\-\-inplace\fP.
+diff --git a/sender.c b/sender.c
+index 1cc28a1..e22eadd 100644
+--- a/sender.c
++++ b/sender.c
+@@ -379,6 +379,16 @@ void send_files(int f_in, int f_out)
+ 			}
+ 		}
+ 
++		if (append_mode > 0 && st.st_size < F_LENGTH(file)) {
++			rprintf(FWARNING, "skipped diminished file: %s\n",
++				full_fname(fname));
++			free_sums(s);
++			close(fd);
++			if (protocol_version >= 30)
++				send_msg_int(MSG_NO_SEND, ndx);
++			continue;
++		}
++
+ 		if (st.st_size) {
+ 			int32 read_size = MAX(s->blength * 3, MAX_MAP_SIZE);
+ 			mbuf = map_file(fd, st.st_size, read_size, s->blength);
