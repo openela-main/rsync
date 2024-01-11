@@ -1,0 +1,13 @@
+diff --git a/exclude.c.old b/exclude.c
+index 232249f..2f6dccc 100644
+--- a/exclude.c.old
++++ b/exclude.c
+@@ -1575,6 +1575,8 @@ char *get_rule_prefix(filter_rule *rule, const char *pat, int for_xfer,
+ 	}
+ 	if (rule->rflags & FILTRULE_EXCLUDE_SELF)
+ 		*op++ = 'e';
++	if (rule->rflags & FILTRULE_XATTR)
++		*op++ = 'x';
+ 	if (rule->rflags & FILTRULE_SENDER_SIDE
+ 	    && (!for_xfer || protocol_version >= 29))
+ 		*op++ = 's';

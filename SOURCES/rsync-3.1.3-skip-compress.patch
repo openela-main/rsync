@@ -1,0 +1,37 @@
+diff --git a/loadparm.c b/loadparm.c
+index 029f358f..534e7b63 100644
+--- a/loadparm.c
++++ b/loadparm.c
+@@ -449,7 +449,7 @@ static struct parm_struct parm_table[] =
+ };
+ 
+ /* Initialise the Default all_vars structure. */
+-static void reset_all_vars(void)
++void reset_daemon_vars(void)
+ {
+ 	memcpy(&Vars, &Defaults, sizeof Vars);
+ }
+@@ -872,7 +872,7 @@ int lp_load(char *pszFname, int globals_only)
+ {
+ 	bInGlobalSection = True;
+ 
+-	reset_all_vars();
++	reset_daemon_vars();
+ 
+ 	/* We get sections first, so have to start 'behind' to make up. */
+ 	iSectionIndex = -1;
+diff --git a/main.c b/main.c
+index 1328c504..9af9e5d3 100644
+--- a/main.c
++++ b/main.c
+@@ -1681,6 +1681,10 @@ int main(int argc,char *argv[])
+ 
+ 	memset(&stats, 0, sizeof(stats));
+ 
++	/* Even a non-daemon runs needs the default config values to be set, e.g.
++	 * lp_dont_compress() is queried when no --skip-compress option is set. */
++	reset_daemon_vars();
++
+ 	if (argc < 2) {
+ 		usage(FERROR);
+ 		exit_cleanup(RERR_SYNTAX);
