@@ -10,7 +10,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.2.3
-Release: 19%{?dist}
+Release: 20%{?dist}
 URL: https://rsync.samba.org/
 
 Source0: https://download.samba.org/pub/rsync/src/rsync-%{version}%{?prerelease}.tar.gz
@@ -42,6 +42,7 @@ Patch7: rsync-3.1.3-cve-2018-25032.patch
 Patch8: rsync-3.2.3-cve-2022-37434.patch
 Patch9: rsync-3.2.3-cve-2022-29154.patch
 Patch10: rsync-3.2.3-filtering-rules.patch
+Patch11: rsync-3.2.3-delay-updates.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -86,6 +87,7 @@ patch -p1 -i patches/copy-devices.diff
 %patch8 -p1 -b .cve-2022-37434
 %patch9 -p1 -b .cve-2022-29154
 %patch10 -p1 -b .filtering-rules
+%patch11 -p1 -b .delay-updates
 
 %build
 %configure --disable-xxhash
@@ -132,6 +134,9 @@ install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
+* Thu Oct 19 2023 Alex Iribarren <Alex.Iribarren@cern.ch> - 3.2.3-20
+- Resolves: RHEL-14228 - rsync regression with --delay-updates
+
 * Wed Nov 02 2022 Michal Ruprich <mruprich@redhat.com> - 3.2.3-19
 - Resolves: #2139349 - rsync error: protocol incompatibility when using rsync-3.2.3-18.el9
 
