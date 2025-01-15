@@ -9,7 +9,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.1.3
-Release: 19%{?dist}.1
+Release: 20%{?dist}
 Group: Applications/Internet
 URL: http://rsync.samba.org/
 
@@ -42,6 +42,7 @@ Patch11: rsync-3.1.3-cve-2022-29154.patch
 Patch12: rsync-3.1.3-cve-2022-37434.patch
 Patch13: rsync-3.1.3-filtering-rules.patch
 Patch14: rsync-3.1.3-missing-xattr-filter.patch
+Patch15: rsync-3.1.3-cve-2024-12085.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -94,6 +95,7 @@ patch -p1 -i patches/copy-devices.diff
 %patch12 -p1 -b .cve-2022-37434
 %patch13 -p1 -b .filtering-rules
 %patch14 -p1 -b .xattr-filter
+%patch15 -p1 -b .cve-2024-12085
 
 %build
 %configure
@@ -140,6 +142,9 @@ chmod -x support/*
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
+* Fri Jan 03 2025 Michal Ruprich <mruprich@redhat.com> - 3.1.3-20
+- Resolves: RHEL-70157 - Info Leak via Uninitialized Stack Contents
+
 * Wed Nov 02 2022 Michal Ruprich <mruprich@redhat.com> - 3.1.3-19.1
 - Resolves: #2139118 - rsync-daemon fail on 3.1.3
 
