@@ -9,7 +9,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.1.3
-Release: 20%{?dist}
+Release: 21%{?dist}
 Group: Applications/Internet
 URL: http://rsync.samba.org/
 
@@ -43,6 +43,9 @@ Patch12: rsync-3.1.3-cve-2022-37434.patch
 Patch13: rsync-3.1.3-filtering-rules.patch
 Patch14: rsync-3.1.3-missing-xattr-filter.patch
 Patch15: rsync-3.1.3-cve-2024-12085.patch
+Patch16: rsync-3.1.3-cve-2024-12087.patch
+Patch17: rsync-3.1.3-cve-2024-12088.patch
+Patch18: rsync-3.1.3-cve-2024-12747.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -96,6 +99,9 @@ patch -p1 -i patches/copy-devices.diff
 %patch13 -p1 -b .filtering-rules
 %patch14 -p1 -b .xattr-filter
 %patch15 -p1 -b .cve-2024-12085
+%patch16 -p1 -b .cve-2024-12087
+%patch17 -p1 -b .cve-2024-12088
+%patch18 -p1 -b .cve-2024-12747
 
 %build
 %configure
@@ -142,7 +148,13 @@ chmod -x support/*
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
-* Fri Jan 03 2025 Michal Ruprich <mruprich@redhat.com> - 3.1.3-20
+* Tue Feb 04 2025 Michal Ruprich <mruprich@redhat.com> - 3.1.3-21
+- Resolves: RHEL-70207 - Path traversal vulnerability in rsync
+
+* Mon Feb 03 2025 Michal Ruprich <mruprich@redhat.com> - 3.1.3-20
+- Resolves: RHEL-70207 - Path traversal vulnerability in rsync
+- Resolves: RHEL-70209 - --safe-links option bypass leads to path traversal
+- Resolves: RHEL-72502 - Race Condition in rsync Handling Symbolic Links
 - Resolves: RHEL-70157 - Info Leak via Uninitialized Stack Contents
 
 * Wed Nov 02 2022 Michal Ruprich <mruprich@redhat.com> - 3.1.3-19.1
