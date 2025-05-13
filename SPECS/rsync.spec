@@ -9,8 +9,8 @@
 
 Summary: A program for synchronizing files over a network
 Name: rsync
-Version: 3.2.3
-Release: 20%{?dist}.1
+Version: 3.2.5
+Release: 3%{?dist}
 URL: https://rsync.samba.org/
 
 Source0: https://download.samba.org/pub/rsync/src/rsync-%{version}%{?prerelease}.tar.gz
@@ -22,28 +22,34 @@ Source5: rsyncd.sysconfig
 Source6: rsyncd@.service
 
 BuildRequires: make
-BuildRequires: gcc gcc-c++
-BuildRequires: libacl-devel, libattr-devel, autoconf, popt-devel, systemd
-BuildRequires: lz4-devel openssl-devel libzstd-devel
+BuildRequires: gcc
+BuildRequires: gcc-c++
+BuildRequires: libacl-devel
+BuildRequires: libattr-devel
+BuildRequires: autoconf
+BuildRequires: popt-devel
+BuildRequires: systemd
+BuildRequires: lz4-devel
+BuildRequires: openssl-devel
+BuildRequires: libzstd-devel
 #Added virtual provide for zlib due to https://fedoraproject.org/wiki/Bundled_Libraries?rd=Packaging:Bundled_Libraries
 Provides: bundled(zlib) = 1.2.8
 License: GPLv3+
 
-#Added temporarily until new rebase
-Patch0: rsync-3.2.2-ssl-verify-hostname.patch
 #Added due to rhbz#1873975 - default-acls test fail on s390x due to libacl
 Patch1: rsync-3.2.2-runtests.patch
-Patch2: rsync-3.2.3-lchmod.patch
-Patch3: rsync-3.2.3-append-mode.patch
-Patch4: rsync-3.2.3-xattr.patch
-Patch5: rsync-3.2.3-segfault.patch
-Patch6: rsync-3.2.3-atimes.patch
-Patch7: rsync-3.1.3-cve-2018-25032.patch
-Patch8: rsync-3.2.3-cve-2022-37434.patch
-Patch9: rsync-3.2.3-cve-2022-29154.patch
-Patch10: rsync-3.2.3-filtering-rules.patch
-Patch11: rsync-3.2.3-delay-updates.patch
-Patch12: rsync-3.2.3-cve-2024-12085.patch
+#commonmark would be needed to generate manpage, so we simply copy it
+Patch2: rsync-3.2.5-rrsync-man.patch
+#A couple of fixes for the new filtering code
+Patch3: rsync-3.2.3-filtering-rules.patch
+Patch4: rsync-3.2.5-cve-2024-12085.patch
+Patch5: rsync-3.2.5-cve-2024-12087.patch
+Patch6: rsync-3.2.5-cve-2024-12088.patch
+Patch7: rsync-3.2.5-cve-2024-12747.patch
+# This is here for RHEL9 lifetime to avoid changes in defaults.
+# From RHEL10 this will have to be documented as a different
+# behaviour for compression.
+Patch8: rsync-3.2.5-default-compression.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -63,6 +69,15 @@ Requires: %{name} = %{version}-%{release}
 Rsync can be used to offer read only access to anonymous clients. This
 package provides the anonymous rsync service.
 
+%package rrsync
+Summary: A script to setup restricted rsync users via ssh logins
+BuildArch: noarch
+Requires: %{name} = %{version}-%{release}
+Requires: %{__python3}
+%description rrsync
+This subpackage provides rrsync script and its manpage. rrsync
+may be used to setup a restricted rsync users via ssh logins.
+
 %prep
 # TAG: for pre versions use
 
@@ -74,25 +89,17 @@ package provides the anonymous rsync service.
 %setup -q -b 1
 %endif
 
-#Enable --copy-devices parameter
-patch -p1 -i patches/copy-devices.diff
-
-%patch0 -p1 -b .verify-hostname
 %patch1 -p1 -b .runtests
-%patch2 -p1 -b .lchmod
-%patch3 -p1 -b .append-mode
-%patch4 -p1 -b .xattr
-%patch5 -p1 -b .segfault
-%patch6 -p1 -b .atimes
-%patch7 -p1 -b .cve-2018-25032
-%patch8 -p1 -b .cve-2022-37434
-%patch9 -p1 -b .cve-2022-29154
-%patch10 -p1 -b .filtering-rules
-%patch11 -p1 -b .delay-updates
-%patch12 -p1 -b .cve-2024-12085
+%patch2 -p1 -b .rrsync-man
+%patch3 -p1 -b .filtering-rules
+%patch4 -p1 -b .cve-2024-12085
+%patch5 -p1 -b .cve-2024-12087
+%patch6 -p1 -b .cve-2024-12088
+%patch7 -p1 -b .cve-2024-12747
+%patch8 -p1 -b .default-compression
 
 %build
-%configure --disable-xxhash
+%configure --disable-xxhash --with-rrsync
 # --with-included-zlib=no temporary disabled because of #1043965
 
 %{make_build}
@@ -126,6 +133,10 @@ install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
 %{_unitdir}/rsyncd.service
 %{_unitdir}/rsyncd@.service
 
+%files rrsync
+%{_bindir}/r%{name}
+%{_mandir}/man1/r%{name}.1*
+
 %post daemon
 %systemd_post rsyncd.service
 
@@ -136,8 +147,20 @@ install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
-* Fri Jan 03 2025 Michal Ruprich <mruprich@redhat.com> - 3.2.3-20.1
-- Resolves: RHEL-72495 - Info Leak via Uninitialized Stack Contents
+* Wed Feb 05 2025 Michal Ruprich <mruprich@redhat.com> - 3.2.5-3
+- Resolves: RHEL-70265 - Rebase rsync to 3.2.5
+
+* Wed Jan 29 2025 Michal Ruprich <mruprich@redhat.com> - 3.2.5-2
+- Resolves: RHEL-70158 - Info Leak via Uninitialized Stack Contents
+- Resolves: RHEL-70208 - Path traversal vulnerability in rsync
+- Resolves: RHEL-70210 - --safe-links option bypass leads to path traversal
+- Resolves: RHEL-71657 - Race Condition in rsync Handling Symbolic Links
+
+* Mon Dec 09 2024 Michal Ruprich <mruprich@redhat.com> - 3.2.3-21
+- Resolves: RHEL-70265 - Rebase rsync to 3.2.5
+- Resolves: RHEL-67142 - Wrong progress reported by rsync when using copy-devices
+- Resolves: RHEL-29340 - Slowness in rsync due to extra validation steps.
+- Resolves: RHEL-18216 - rysnc script /usr/share/doc/rsync/support/rrsync is unsecure
 
 * Thu Oct 19 2023 Alex Iribarren <Alex.Iribarren@cern.ch> - 3.2.3-20
 - Resolves: RHEL-14228 - rsync regression with --delay-updates

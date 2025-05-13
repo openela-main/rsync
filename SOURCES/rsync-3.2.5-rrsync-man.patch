@@ -1,0 +1,23 @@
+diff --git a/Makefile.in b/Makefile.in
+index 3cde955..06232f1 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -106,6 +106,9 @@ rsync$(EXEEXT): $(OBJS)
+ rrsync: support/rrsync
+ 	cp -p $(srcdir)/support/rrsync rrsync
+ 
++rrsync.1.md: support/rrsync.1.md
++	cp -p $(srcdir)/support/rrsync.1.md rrsync.1.md
++
+ $(OBJS): $(HEADERS)
+ $(CHECK_OBJS): $(HEADERS)
+ tls.o xattrs.o: lib/sysxattrs.h
+@@ -269,7 +269,7 @@ rsyncd.conf.5: rsyncd.conf.5.md md-convert version.h Makefile
+ 	@$(srcdir)/maybe-make-man rsyncd.conf.5.md
+ 
+ rrsync.1: support/rrsync.1.md md-convert Makefile
+-	@$(srcdir)/maybe-make-man support/rrsync.1.md
++	@$(srcdir)/maybe-make-man rrsync.1.md
+ 
+ .PHONY: clean
+ clean: cleantests

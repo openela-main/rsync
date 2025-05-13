@@ -1,0 +1,171 @@
+diff --git a/NEWS.md b/NEWS.md
+index e32600c..e1f7d41 100644
+--- a/NEWS.md
++++ b/NEWS.md
+@@ -92,7 +92,7 @@
+        export LC_ALL=C.UTF-8
+    ```
+ 
+-   or if iconv translations are needed:
++   or maybe:
+ 
+    ```shell
+        if [ "${LC_ALL:-}" ]; then
+@@ -145,11 +145,6 @@
+  - Avoid a weird failure if you run a local copy with a (useless)
+    [`--rsh`](rsync.1#opt) option that contains a `V` in the command.
+ 
+- - Fixed a long-standing compression bug where the compression level of the
+-   first file transferred affected the level for all future files.  Also, the
+-   per-file compression skipping has apparently never worked, so it is now
+-   documented as being ineffective.
+-
+  - Fixed a truncate error when a `--write-devices` copy wrote a file onto a
+    device that was shorter than the device.
+ 
+diff --git a/rsync.1.md b/rsync.1.md
+index f29495f..d06f231 100644
+--- a/rsync.1.md
++++ b/rsync.1.md
+@@ -2658,6 +2658,9 @@ expand it.
+     ignore this weirdness unless the rsync server complains and tells you to
+     specify `-zz`.
+ 
++    See also the `--skip-compress` option for the default list of file suffixes
++    that will be transferred with no (or minimal) compression.
++
+ 0.  `--compress-choice=STR`, `--zc=STR`
+ 
+     This option can be used to override the automatic negotiation of the
+@@ -2703,8 +2706,8 @@ expand it.
+     >     rsync -aiv --zc=zstd --zl=22 host:src/ dest/
+ 
+     For zlib & zlibx compression the valid values are from 1 to 9 with 6 being
+-    the default.  Specifying `--zl=0` turns compression off, and specifying
+-    `--zl=-1` chooses the default level of 6.
++    the default.  Specifying 0 turns compression off, and specifying -1 chooses
++    the default of 6.
+ 
+     For zstd compression the valid values are from -131072 to 22 with 3 being
+     the default. Specifying 0 chooses the default of 3.
+@@ -2723,15 +2726,14 @@ expand it.
+ 
+ 0.  `--skip-compress=LIST`
+ 
+-    **NOTE:** no compression method currently supports per-file compression
+-    changes, so this option has no effect.
+-
+     Override the list of file suffixes that will be compressed as little as
+     possible.  Rsync sets the compression level on a per-file basis based on
+-    the file's suffix.  If the compression algorithm has an "off" level, then
+-    no compression occurs for those files.  Other algorithms that support
+-    changing the streaming level on-the-fly will have the level minimized to
+-    reduces the CPU usage as much as possible for a matching file.
++    the file's suffix.  If the compression algorithm has an "off" level (such
++    as zlib/zlibx) then no compression occurs for those files.  Other
++    algorithms that support changing the streaming level on-the-fly will have
++    the level minimized to reduces the CPU usage as much as possible for a
++    matching file.  At this time, only zlib & zlibx compression support this
++    changing of levels on a per-file basis.
+ 
+     The **LIST** should be one or more file suffixes (without the dot) separated
+     by slashes (`/`).  You may specify an empty string to indicate that no files
+diff --git a/rsyncd.conf.5.md b/rsyncd.conf.5.md
+index 8bcbec0..e28c27a 100644
+--- a/rsyncd.conf.5.md
++++ b/rsyncd.conf.5.md
+@@ -924,9 +924,8 @@ the values of parameters.  See the GLOBAL PARAMETERS section for more details.
+ 
+     >     refuse options = * !a !delete* delete-after
+ 
+-    A note on refusing "compress": it may be better to set the "[dont compress](#)"
+-    daemon parameter to "`*`" and ensure that `RSYNC_COMPRESS_LIST=zlib` is set
+-    in the environment of the daemon in order to disable compression silently
++    A note on refusing "compress": it may be better to set the "dont compress"
++    daemon parameter to "`*`" because that disables compression silently
+     instead of returning an error that forces the client to remove the `-z`
+     option.
+ 
+@@ -958,10 +957,6 @@ the values of parameters.  See the GLOBAL PARAMETERS section for more details.
+ 
+ 0.  `dont compress`
+ 
+-    **NOTE:** This parameter currently has no effect except in one instance: if
+-    it is set to "`*`" then it minimizes or disables compression for all files
+-    (for those that don't want to refuse the `--compress` option completely).
+-
+     This parameter allows you to select filenames based on wildcard patterns
+     that should not be compressed when pulling files from the daemon (no
+     analogous parameter exists to govern the pushing of files to a daemon).
+@@ -972,14 +967,14 @@ the values of parameters.  See the GLOBAL PARAMETERS section for more details.
+     The "dont compress" parameter takes a space-separated list of
+     case-insensitive wildcard patterns. Any source filename matching one of the
+     patterns will be compressed as little as possible during the transfer.  If
+-    the compression algorithm has an "off" level, then no compression occurs
+-    for those files.  If an algorithms has the ability to change the level in
+-    mid-stream, it will be minimized to reduce the CPU usage as much as
+-    possible.
++    the compression algorithm has an "off" level (such as zlib/zlibx) then no
++    compression occurs for those files.  Other algorithms have the level
++    minimized to reduces the CPU usage as much as possible.
+ 
+     See the `--skip-compress` parameter in the **rsync**(1) manpage for the
+-    list of file suffixes that are skipped by default if this parameter is not
+-    set.
++    list of file suffixes that are not compressed by default.  Specifying a
++    value for the "dont compress" parameter changes the default when the daemon
++    is the sender.
+ 
+ 0.  `early exec`, `pre-xfer exec`, `post-xfer exec`
+ 
+diff --git a/token.c b/token.c
+index c108b3a..f5a41c9 100644
+--- a/token.c
++++ b/token.c
+@@ -39,6 +39,7 @@ extern char *skip_compress;
+ #define Z_INSERT_ONLY Z_SYNC_FLUSH
+ #endif
+ 
++static int compression_level; /* The compression level for the current file. */
+ static int skip_compression_level; /* The least possible compressing for handling skip-compress files. */
+ static int per_file_default_level; /* The default level that each new file gets prior to checking its suffix. */
+ 
+@@ -223,11 +224,9 @@ static void init_set_compression(void)
+ /* determine the compression level based on a wildcard filename list */
+ void set_compression(const char *fname)
+ {
+-#if 0 /* No compression algorithms currently allow mid-stream changing of the level. */
+ 	const struct suffix_tree *node;
+ 	const char *s;
+ 	char ltr;
+-#endif
+ 
+ 	if (!do_compression)
+ 		return;
+@@ -235,7 +234,6 @@ void set_compression(const char *fname)
+ 	if (!match_list)
+ 		init_set_compression();
+ 
+-#if 0
+ 	compression_level = per_file_default_level;
+ 
+ 	if (!*match_list && !suftree)
+@@ -272,9 +270,6 @@ void set_compression(const char *fname)
+ 		if (!(node = node->child))
+ 			return;
+ 	}
+-#else
+-	(void)fname;
+-#endif
+ }
+ 
+ /* non-compressing recv token */
+@@ -366,7 +361,7 @@ send_deflated_token(int f, int32 token, struct map_struct *buf, OFF_T offset, in
+ 			tx_strm.next_in = NULL;
+ 			tx_strm.zalloc = NULL;
+ 			tx_strm.zfree = NULL;
+-			if (deflateInit2(&tx_strm, per_file_default_level,
++			if (deflateInit2(&tx_strm, compression_level,
+ 					 Z_DEFLATED, -15, 8,
+ 					 Z_DEFAULT_STRATEGY) != Z_OK) {
+ 				rprintf(FERROR, "compression init failed\n");

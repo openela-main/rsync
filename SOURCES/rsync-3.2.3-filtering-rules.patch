@@ -40,9 +40,9 @@ index 13c4253..232249f 100644
 +	int slash_cnt = 0;
  	const char *cp;
  	char *p;
- 	if (am_server || old_style_args || list_only || read_batch || filesfrom_host != NULL)
+ 	if (trust_sender_args)
 @@ -407,6 +413,7 @@ void add_implied_include(const char *arg, int skip_daemon_module)
- 	}
+		arg++;
  	arg_len = strlen(arg);
  	if (arg_len) {
 +		char *new_pat;
@@ -287,21 +287,6 @@ index 13c4253..232249f 100644
  }
  
  /* This is only called by the client. */
-diff --git a/options.c b/options.c
-index afc33ce..4d0a1a6 100644
---- a/options.c
-+++ b/options.c
-@@ -2426,7 +2426,9 @@ char *safe_arg(const char *opt, const char *arg)
- 	char *ret;
- 	if (!protect_args && old_style_args < 2 && (!old_style_args || (!is_filename_arg && opt != SPLIT_ARG_WHEN_OLD))) {
- 		const char *f;
--		if (!old_style_args && *arg == '~' && (relative_paths || !strchr(arg, '/'))) {
-+		if (!old_style_args && *arg == '~' 
-+				&& ((relative_paths && !strstr(arg, "/./")) 
-+				|| !strchr(arg, '/'))) {
- 			extras++;
- 			escape_leading_tilde = 1;
- 		}
 diff --git a/flist.c b/flist.c
 index 630d685..8c2397b 100644
 --- a/flist.c
