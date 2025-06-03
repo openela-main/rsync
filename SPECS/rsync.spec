@@ -9,7 +9,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.1.3
-Release: 21%{?dist}
+Release: 23%{?dist}
 Group: Applications/Internet
 URL: http://rsync.samba.org/
 
@@ -46,6 +46,9 @@ Patch15: rsync-3.1.3-cve-2024-12085.patch
 Patch16: rsync-3.1.3-cve-2024-12087.patch
 Patch17: rsync-3.1.3-cve-2024-12088.patch
 Patch18: rsync-3.1.3-cve-2024-12747.patch
+# a fix for CVE-2016-9840 in zlib but marked as CVE-2025-4638 for a different component
+Patch19: rsync-3.1.3-cve-2025-4638.patch
+Patch20: rsync-3.1.3-trust-sender.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -102,6 +105,8 @@ patch -p1 -i patches/copy-devices.diff
 %patch16 -p1 -b .cve-2024-12087
 %patch17 -p1 -b .cve-2024-12088
 %patch18 -p1 -b .cve-2024-12747
+%patch19 -p1 -b .cve-2025-4638
+%patch20 -p1 -b .trust-sender
 
 %build
 %configure
@@ -148,6 +153,12 @@ chmod -x support/*
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
+* Wed May 28 2025 Michal Ruprich <mruprich@redhat.com> - 3.1.3-23
+- Resolves: RHEL-52004 - Slowness in rsync due to extra validation steps
+
+* Mon May 26 2025 Michal Ruprich <mruprich@redhat.com> - 3.1.3-22
+- Resolves: RHEL-91519 - Improper Pointer Arithmetic in pcl
+
 * Tue Feb 04 2025 Michal Ruprich <mruprich@redhat.com> - 3.1.3-21
 - Resolves: RHEL-70207 - Path traversal vulnerability in rsync
 

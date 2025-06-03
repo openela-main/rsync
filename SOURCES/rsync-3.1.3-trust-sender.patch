@@ -1,0 +1,218 @@
+diff --git a/exclude.c b/exclude.c
+index d36a105e..da25661b 100644
+--- a/exclude.c
++++ b/exclude.c
+@@ -33,18 +33,15 @@ extern int recurse;
+ extern int local_server;
+ extern int prune_empty_dirs;
+ extern int ignore_perishable;
+-extern int old_style_args;
+ extern int relative_paths;
+ extern int delete_mode;
+ extern int delete_excluded;
+ extern int cvs_exclude;
+ extern int sanitize_paths;
+ extern int protocol_version;
+-extern int read_batch;
+-extern int list_only;
++extern int trust_sender_args;
+ extern int module_id;
+ 
+-extern char *filesfrom_host;
+ extern char curr_dir[MAXPATHLEN];
+ extern unsigned int curr_dir_len;
+ extern unsigned int module_dirlen;
+@@ -55,6 +52,7 @@ filter_rule_list daemon_filter_list = { .debug_type = " [daemon]" };
+ filter_rule_list implied_filter_list = { .debug_type = " [implied]" };
+ 
+ int saw_xattr_filter = 0;
++int trust_sender_args = 0;
+ int trust_sender_filter = 0;
+ 
+ /* Need room enough for ":MODS " prefix plus some room to grow. */
+@@ -377,7 +375,7 @@ void add_implied_include(const char *arg, int skip_daemon_module)
+ 	int slash_cnt = 0;
+ 	const char *cp;
+ 	char *p;
+-	if (am_server || old_style_args || list_only || read_batch || filesfrom_host != NULL)
++	if (trust_sender_args)
+ 		return;
+ 	if (partial_string_len) {
+ 		arg_len = strlen(arg);
+diff --git a/main.c b/main.c
+index 6721ceb7..9ebfbea7 100644
+--- a/main.c
++++ b/main.c
+@@ -89,7 +89,6 @@ extern int backup_dir_len;
+ extern BOOL shutting_down;
+ extern int backup_dir_len;
+ extern int basis_dir_cnt;
+-extern int trust_sender_filter;
+ extern struct stats stats;
+ extern char *stdout_format;
+ extern char *logfile_format;
+@@ -636,7 +635,6 @@ static pid_t do_cmd(char *cmd, char *machine, char *user, char **remote_argv, in
+ #ifdef ICONV_CONST
+ 		setup_iconv();
+ #endif
+-		trust_sender_filter = 1;
+ 	} else if (local_server) {
+ 		/* If the user didn't request --[no-]whole-file, force
+ 		 * it on, but only if we're not batch processing. */
+diff --git a/options.c b/options.c
+index e7a9fcae..4feeb7e0 100644
+--- a/options.c
++++ b/options.c
+@@ -27,6 +27,8 @@
+ extern int local_server;
+ extern int sanitize_paths;
+ extern int daemon_over_rsh;
++extern int trust_sender_args;
++extern int trust_sender_filter;
+ extern unsigned int module_dirlen;
+ extern filter_rule_list filter_list;
+ extern filter_rule_list daemon_filter_list;
+@@ -64,6 +66,7 @@ int preserve_atimes = 0;
+ static int daemon_opt;   /* sets am_daemon after option error-reporting */
+ static int omit_dir_times = 0;
+ static int omit_link_times = 0;
++int trust_sender = 0;
+ static int F_option_cnt = 0;
+ static int modify_window_set;
+ static int itemize_changes = 0;
+@@ -788,6 +791,7 @@ static struct poptOption long_options[] = {
+   {"protect-args",    's', POPT_ARG_VAL,    &protect_args, 1, 0, 0},
+   {"no-protect-args",  0,  POPT_ARG_VAL,    &protect_args, 0, 0, 0},
+   {"no-s",             0,  POPT_ARG_VAL,    &protect_args, 0, 0, 0},
++  {"trust-sender",     0,  POPT_ARG_VAL,    &trust_sender, 1, 0, 0},
+   {"numeric-ids",      0,  POPT_ARG_VAL,    &numeric_ids, 1, 0, 0 },
+   {"no-numeric-ids",   0,  POPT_ARG_VAL,    &numeric_ids, 0, 0, 0 },
+   {"usermap",          0,  POPT_ARG_STRING, 0, OPT_USERMAP, 0, 0 },
+@@ -2465,6 +2469,11 @@ int parse_arguments(int *argc_p, const char ***argv_p)
+ 		}
+ 	}
+ 
++	if (trust_sender || am_server || read_batch)
++		trust_sender_args = trust_sender_filter = 1;
++	else if (old_style_args || filesfrom_host != NULL)
++		trust_sender_args = 1;
++
+ 	am_starting_up = 0;
+ 
+ 	return 1;
+@@ -2438,9 +2438,7 @@ char *safe_arg(const char *opt, const char *arg)
+ 	char *ret;
+ 	if (!protect_args && old_style_args < 2 && (!old_style_args || (!is_filename_arg && opt != SPLIT_ARG_WHEN_OLD))) {
+ 		const char *f;
+-		if (!old_style_args && *arg == '~' 
+-				&& ((relative_paths && !strstr(arg, "/./")) 
+-				|| !strchr(arg, '/'))) {
++		if (!trust_sender_args && *arg == '~' && (relative_paths || !strchr(arg, '/'))) {
+ 			extras++;
+ 			escape_leading_tilde = 1;
+ 		}
+diff --git a/rsync.1.old b/rsync.1
+index 839f5ad..6882cf5 100644
+--- a/rsync.1.old
++++ b/rsync.1
+@@ -182,9 +182,39 @@ particular rsync daemon by leaving off the module name:
+ \f(CWrsync somehost.mydomain.com::\fP
+ .RE
+ 
+-.PP 
+-See the following section for more details.
+-.PP 
++.SH "MULTI-HOST SECURITY"
++
++.PP
++Rsync takes steps to ensure that the file requests that are shared in a
++transfer are protected against various security issues.  Most of the potential
++problems arise on the receiving side where rsync takes steps to ensure that the
++list of files being transferred remains within the bounds of what was
++requested.
++.PP
++Toward this end, rsync 3.1.2 and later have aborted when a file list contains
++an absolute or relative path that tries to escape out of the top of the
++transfer.  Also, beginning with version 3.2.5, rsync does two more safety
++checks of the file list to (1) ensure that no extra source arguments were added
++into the transfer other than those that the client requested and (2) ensure
++that the file list obeys the exclude rules that we sent to the sender.
++.PP
++For those that don't yet have a 3.2.5 client rsync, it is safest to do a copy
++into a dedicated destination directory for the remote files rather than
++requesting the remote content get mixed in with other local content.  For
++example, doing an rsync copy into your home directory is potentially unsafe on
++an older rsync if the remote rsync is being controlled by a bad actor:
++.PP
++.RS
++\f(CWrsync \-aiv host:dir1 ~\fP
++.RE
++.PP
++A safer command would be:
++.RS
++\f(CWrsync \-aiv host:dir1 ~/host-files\fP
++.RE
++.PP
++See the \fB\-\-trust\-sender\fP option for additional details.
++
+ .SH "ADVANCED USAGE"
+ 
+ .PP 
+@@ -519,6 +549,7 @@ to the detailed description below for a complete description.
+  \-0, \-\-from0                 all *from/filter files are delimited by 0s
+      \-\-old\-args              disable the modern arg-protection idiom
+  \-s, \-\-protect\-args          no space\-splitting; wildcard chars only
++     \-\-trust\-sender          trust the remote sender's file list
+      \-\-address=ADDRESS       bind address for outgoing socket to daemon
+      \-\-port=PORT             specify double\-colon alternate port number
+      \-\-sockopts=OPTIONS      specify custom TCP options
+@@ -2119,6 +2150,49 @@ This option conflicts with the \fB\-\-old\-args\fP option.
+ Note that this option is incompatible with the use of the restricted rsync
+ script (`rrsync`) since it hides options from the script's inspection.
+ .IP
++.IP "\fB\-\-trust\-sender\fP"
++This option disables two extra validation checks that a local client
++performs on the file list generated by a remote sender.  This option should
++only be used if you trust the sender to not put something malicious in the
++file list (something that could possibly be done via a modified rsync, a
++modified shell, or some other similar manipulation).
++.IP
++Normally, the rsync client (as of version 3.2.5) runs two extra validation
++checks when pulling files from a remote rsync:
++.RS
++.IP o
++It verifies that additional arg items didn't get added at the top of the
++transfer.
++.IP o
++It verifies that none of the items in the file list are names that should
++have been excluded (if filter rules were specified).
++.RE
++.IP
++Note that various options can turn off one or both of these checks if the
++option interferes with the validation.  For instance:
++.RS
++.IP o
++Using a per-directory filter file reads filter rules that only the server
++knows about, so the filter checking is disabled.
++.IP o
++Using the \fB\-\-old\-args\fP option allows the sender to manipulate the
++requested args, so the arg checking is disabled.
++.IP o
++Reading the files-from list from the server side means that the client
++doesn't know the arg list, so the arg checking is disabled.
++.IP o
++Using \fB\-\-read\-batch\fP disables both checks since the batch file's
++contents will have been verified when it was created.
++.RE
++.IP
++This option may help an under-powered client server if the extra pattern
++matching is slowing things down on a huge transfer.  It can also be used
++work around a currently-unknown bug in the verification logic for a transfer
++from a trusted sender.
++.IP
++When using this option it is a good idea to specify a dedicated destination
++directory, as discussed in the \(dq\&MULTI-HOST SECURITY\(dq\& section.
++.IP
+ .IP "\fB\-T, \-\-temp\-dir=DIR\fP"
+ This option instructs rsync to use DIR as a
+ scratch directory when creating temporary copies of the files transferred
