@@ -1,0 +1,15 @@
+diff --git a/main.c b/main.c
+index 7222a83..630ca03 100644
+--- a/main.c
++++ b/main.c
+@@ -1743,7 +1743,9 @@ int main(int argc,char *argv[])
+ 	our_gid = MY_GID();
+ 	am_root = our_uid == ROOT_UID;
+ 
+-	unset_env_var("DISPLAY");
++	// DISPLAY should only be cleared if SSH_ASKPASS is empty
++	if (!getenv("SSH_ASKPASS"))
++		unset_env_var("DISPLAY");
+ 
+ 	memset(&stats, 0, sizeof(stats));
+ 

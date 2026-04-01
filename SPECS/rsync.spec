@@ -10,7 +10,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.2.5
-Release: 3%{?dist}
+Release: 3%{?dist}.2
 URL: https://rsync.samba.org/
 
 Source0: https://download.samba.org/pub/rsync/src/rsync-%{version}%{?prerelease}.tar.gz
@@ -50,6 +50,8 @@ Patch7: rsync-3.2.5-cve-2024-12747.patch
 # From RHEL10 this will have to be documented as a different
 # behaviour for compression.
 Patch8: rsync-3.2.5-default-compression.patch
+Patch9: rsync-3.2.5-ssh-askpass.patch
+Patch10: rsync-3.4.1-cve-2025-10158.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -97,6 +99,8 @@ may be used to setup a restricted rsync users via ssh logins.
 %patch6 -p1 -b .cve-2024-12088
 %patch7 -p1 -b .cve-2024-12747
 %patch8 -p1 -b .default-compression
+%patch9 -p1 -b .ssh-askpass
+%patch10 -p1 -b .cve-2025-10158
 
 %build
 %configure --disable-xxhash --with-rrsync
@@ -147,6 +151,12 @@ install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
+* Thu Mar 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-3.2
+- Resolves: RHEL-152888 - CVE-2025-10158 Out of bounds array access via negative index
+
+* Thu Mar 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-3.1
+- Resolves: RHEL-152879 - clearing DISPLAY breaks SSH_ASKPASS expectations
+
 * Wed Feb 05 2025 Michal Ruprich <mruprich@redhat.com> - 3.2.5-3
 - Resolves: RHEL-70265 - Rebase rsync to 3.2.5
 
