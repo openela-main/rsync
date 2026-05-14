@@ -9,7 +9,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.1.3
-Release: 24%{?dist}
+Release: 25%{?dist}
 Group: Applications/Internet
 URL: http://rsync.samba.org/
 
@@ -50,6 +50,8 @@ Patch18: rsync-3.1.3-cve-2024-12747.patch
 Patch19: rsync-3.1.3-cve-2025-4638.patch
 Patch20: rsync-3.1.3-trust-sender.patch
 Patch21: rsync-3.1.3-cve-2025-10158.patch
+# https://github.com/RsyncProject/rsync/commit/bb0a8118c2d2ab01140bac5e4e327e5e1ef90c9c
+Patch22: rsync-3.1.3-cve-2026-41035.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -109,6 +111,7 @@ patch -p1 -i patches/copy-devices.diff
 %patch19 -p1 -b .cve-2025-4638
 %patch20 -p1 -b .trust-sender
 %patch21 -p1 -b .cve-2025-10158
+%patch22 -p1 -b .cve-2026-41035
 
 %build
 %configure
@@ -155,6 +158,9 @@ chmod -x support/*
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
+* Tue May 05 2026 Michal Ruprich <mruprich@redhat.com> - 3.1.3-25
+- Resolves: RHEL-169141 - CVE-2026-41035 - Use-after-free vulnerability in extended attribute handling
+
 * Wed Mar 11 2026 Michal Ruprich <mruprich@redhat.com> - 3.1.3-24
 - Resolves: RHEL-152887 - CVE-2025-10158 - Out of bounds array access via negative index
 
