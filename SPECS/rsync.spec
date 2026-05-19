@@ -9,7 +9,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.4.1
-Release: 2%{?prerelease}%{?dist}.2
+Release: 6%{?prerelease}%{?dist}
 URL: https://rsync.samba.org/
 
 Source0: https://download.samba.org/pub/rsync/src/rsync-%{version}%{?prerelease}.tar.gz
@@ -47,6 +47,9 @@ Patch1: rsync-3.2.2-runtests.patch
 Patch2: rsync-3.4.1-rrsync-man.patch
 Patch3: rsync-3.4.1-ssh-askpass.patch
 Patch4: rsync-3.4.1-cve-2025-10158.patch
+Patch5: rsync-3.4.1-cve-2026-41035.patch
+# https://github.com/RsyncProject/rsync/commit/4fa7156ccdb2ad34b034d18fe2fd6cd79adef8a1
+Patch6: rsync-3.4.1-use-openat2.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -90,6 +93,8 @@ may be used to setup a restricted rsync users via ssh logins.
 %patch 2 -p1 -b .rrsync
 %patch 3 -p1 -b .ssh-askpass
 %patch 4 -p1 -b .cve-2025-10158
+%patch 5 -p1 -b .cve-2026-41035
+%patch 6 -p1 -b .use-openat2
 
 %build
 %configure \
@@ -147,11 +152,17 @@ install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
-* Thu Mar 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.4.1-2.2
-- Resolves: RHEL-152885 - CVE-2025-10158 Out of bounds array access via negative index
+* Tue May 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.4.1-6
+- Resolves: RHEL-172276 - Fix regression introduced with CVE-2024-12086 fix
 
-* Thu Mar 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.4.1-2.1
-- Resolves: RHEL-152878 - clearing DISPLAY breaks SSH_ASKPASS expectations
+* Tue Apr 28 2026 Michal Ruprich <mruprich@redhat.com> - 3.4.1-5
+- Resolves: RHEL-169137 - CVE-2026-41035 - Use-after-free vulnerability in extended attribute handling
+
+* Mon Apr 13 2026 Michal Ruprich <mruprich@redhat.com> - 3.4.1-4
+- Resolves: RHEL-152527 - CVE-2025-10158 Out of bounds array access via negative index
+
+* Thu Oct 09 2025 Michal Ruprich <mruprich@redhat.com> - 3.4.1-3
+- Resolves: RHEL-118549 - Do not clear DISPLAY unconditionally
 
 * Thu Jan 30 2025 Michal Ruprich <mruprich@redhat.com> - 3.4.1-2
 - Resolves: RHEL-71293 - Build rsync with --with-rrsync
