@@ -10,7 +10,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.2.5
-Release: 3%{?dist}.2
+Release: 7%{?dist}
 URL: https://rsync.samba.org/
 
 Source0: https://download.samba.org/pub/rsync/src/rsync-%{version}%{?prerelease}.tar.gz
@@ -37,21 +37,28 @@ Provides: bundled(zlib) = 1.2.8
 License: GPLv3+
 
 #Added due to rhbz#1873975 - default-acls test fail on s390x due to libacl
-Patch1: rsync-3.2.2-runtests.patch
+Patch1:  rsync-3.2.2-runtests.patch
 #commonmark would be needed to generate manpage, so we simply copy it
-Patch2: rsync-3.2.5-rrsync-man.patch
+Patch2:  rsync-3.2.5-rrsync-man.patch
 #A couple of fixes for the new filtering code
-Patch3: rsync-3.2.3-filtering-rules.patch
-Patch4: rsync-3.2.5-cve-2024-12085.patch
-Patch5: rsync-3.2.5-cve-2024-12087.patch
-Patch6: rsync-3.2.5-cve-2024-12088.patch
-Patch7: rsync-3.2.5-cve-2024-12747.patch
+Patch3:  rsync-3.2.3-filtering-rules.patch
+Patch4:  rsync-3.2.5-cve-2024-12085.patch
+Patch5:  rsync-3.2.5-cve-2024-12087.patch
+Patch6:  rsync-3.2.5-cve-2024-12088.patch
+Patch7:  rsync-3.2.5-cve-2024-12747.patch
 # This is here for RHEL9 lifetime to avoid changes in defaults.
 # From RHEL10 this will have to be documented as a different
 # behaviour for compression.
-Patch8: rsync-3.2.5-default-compression.patch
-Patch9: rsync-3.2.5-ssh-askpass.patch
-Patch10: rsync-3.4.1-cve-2025-10158.patch
+Patch8:  rsync-3.2.5-default-compression.patch
+Patch9:  rsync-3.2.5-ssh-askpass.patch
+Patch10: rsync-3.2.5-cve-2025-10158.patch
+# https://github.com/RsyncProject/rsync/commit/bb0a8118c2d2ab01140bac5e4e327e5e1ef90c9c
+Patch11: rsync-3.2.5-cve-2026-41035.patch
+# Fix for CVE-2024-12086 has three parts:
+# https://github.com/RsyncProject/rsync/commit/b4a27ca and
+# https://github.com/RsyncProject/rsync/commit/c35e283
+# These need to be followed by https://github.com/RsyncProject/rsync/commit/4fa7156
+Patch12: rsync-3.2.5-cve-2024-12086.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -91,16 +98,18 @@ may be used to setup a restricted rsync users via ssh logins.
 %setup -q -b 1
 %endif
 
-%patch1 -p1 -b .runtests
-%patch2 -p1 -b .rrsync-man
-%patch3 -p1 -b .filtering-rules
-%patch4 -p1 -b .cve-2024-12085
-%patch5 -p1 -b .cve-2024-12087
-%patch6 -p1 -b .cve-2024-12088
-%patch7 -p1 -b .cve-2024-12747
-%patch8 -p1 -b .default-compression
-%patch9 -p1 -b .ssh-askpass
-%patch10 -p1 -b .cve-2025-10158
+%patch 1  -p1 -b .runtests
+%patch 2  -p1 -b .rrsync-man
+%patch 3  -p1 -b .filtering-rules
+%patch 4  -p1 -b .cve-2024-12085
+%patch 5  -p1 -b .cve-2024-12087
+%patch 6  -p1 -b .cve-2024-12088
+%patch 7  -p1 -b .cve-2024-12747
+%patch 8  -p1 -b .default-compression
+%patch 9  -p1 -b .ssh-askpass
+%patch 10 -p1 -b .cve-2025-10158
+%patch 11 -p1 -b .cve-2026-41035
+%patch 12 -p1 -b .cve-2024-12086
 
 %build
 %configure --disable-xxhash --with-rrsync
@@ -151,11 +160,17 @@ install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
-* Thu Mar 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-3.2
-- Resolves: RHEL-152888 - CVE-2025-10158 Out of bounds array access via negative index
+* Mon May 11 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-7
+- Resolves: RHEL-173468 - CVE-2024-12086 rsync server leaks arbitrary client files
 
-* Thu Mar 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-3.1
-- Resolves: RHEL-152879 - clearing DISPLAY breaks SSH_ASKPASS expectations
+* Mon May 04 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-6
+- Resolves: RHEL-169151 - CVE-2026-41035 - Use-after-free vulnerability in extended attribute handling
+
+* Tue Apr 07 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-5
+- Resolves: RHEL-152536 - CVE-2025-10158 Out of bounds array access via negative index
+
+* Thu Oct 09 2025 Michal Ruprich <mruprich@redhat.com> - 3.2.5-4
+- Resolves: RHEL-104404 - Do not clear DISPLAY unconditionally
 
 * Wed Feb 05 2025 Michal Ruprich <mruprich@redhat.com> - 3.2.5-3
 - Resolves: RHEL-70265 - Rebase rsync to 3.2.5
