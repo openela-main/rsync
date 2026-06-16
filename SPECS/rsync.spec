@@ -9,7 +9,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.1.3
-Release: 25%{?dist}
+Release: 27%{?dist}
 Group: Applications/Internet
 URL: http://rsync.samba.org/
 
@@ -52,6 +52,23 @@ Patch20: rsync-3.1.3-trust-sender.patch
 Patch21: rsync-3.1.3-cve-2025-10158.patch
 # https://github.com/RsyncProject/rsync/commit/bb0a8118c2d2ab01140bac5e4e327e5e1ef90c9c
 Patch22: rsync-3.1.3-cve-2026-41035.patch
+# https://github.com/RsyncProject/rsync/commit/1a5ad81add1004354a3d8ba841b94ffe19cd2505
+# https://github.com/RsyncProject/rsync/commit/99b36291d06ca66229942c7a525a1f5566f10c85
+# https://github.com/RsyncProject/rsync/commit/72d1cf1c288e5c526e906db2edafbf3d55762668
+# https://github.com/RsyncProject/rsync/commit/61d987c54a472d88855c5fbef3a4c7b51696f93a
+# https://github.com/RsyncProject/rsync/commit/24852cda3db38e2f2cd78a13703373c77f75f4d5
+# https://github.com/RsyncProject/rsync/commit/d22b6bc7d1b1d7be9df1c0c6db1599cb7d5fd82c
+# https://github.com/RsyncProject/rsync/commit/39b3074a1ab18705cd685fe0659fc958c8cd3db5
+# https://github.com/RsyncProject/rsync/commit/a277a06b1017b4cf6bb0fe33d5823869ed02dfd9
+Patch23: rsync-3.1.3-fix-cve-2026-29518.patch
+# Backporting a couple of regression fixes
+# https://github.com/RsyncProject/rsync/commit/f6b39cca
+# https://github.com/RsyncProject/rsync/commit/5ce33659
+# https://github.com/RsyncProject/rsync/commit/3526884f
+# https://github.com/RsyncProject/rsync/commit/7192db98
+Patch24: rsync-3.1.3-fix-cve-2026-29518-regressions.patch
+# https://github.com/RsyncProject/rsync/commit/c44c90e9460c666c965446a8c0957f0b9fa4c66a
+Patch25: rsync-3.1.3-fix-cve-2026-43618.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -112,6 +129,9 @@ patch -p1 -i patches/copy-devices.diff
 %patch20 -p1 -b .trust-sender
 %patch21 -p1 -b .cve-2025-10158
 %patch22 -p1 -b .cve-2026-41035
+%patch23 -p1 -b .cve-2026-29518
+%patch24 -p1 -b .cve-2026-29518-regressions
+%patch25 -p1 -b .cve-2026-43618
 
 %build
 %configure
@@ -158,6 +178,14 @@ chmod -x support/*
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
+* Mon Jun 15 2026 Michal Ruprich <mruprich@redhat.com> - 3.1.3-27
+- Integer overflow in compressed-token decoding (CVE-2026-43618)
+- Resolves: RHEL-174951
+
+* Thu May 28 2026 RHEL Packaging Agent <redhat-ymir-agent@redhat.com> - 3.1.3-26
+- Resolves: RHEL-174950 - CVE-2026-29518 - TOCTOU symlink race in
+  non-chrooted daemon modules
+
 * Tue May 05 2026 Michal Ruprich <mruprich@redhat.com> - 3.1.3-25
 - Resolves: RHEL-169141 - CVE-2026-41035 - Use-after-free vulnerability in extended attribute handling
 
