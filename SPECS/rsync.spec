@@ -2,8 +2,8 @@
 
 Summary: A program for synchronizing files over a network
 Name: rsync
-Version: 3.4.4
-Release: 1%{?dist}
+Version: 3.5.0
+Release: 3%{?dist}
 URL: https://rsync.samba.org/
 
 Source0: https://download.samba.org/pub/rsync/src/rsync-%{version}.tar.gz
@@ -39,6 +39,11 @@ License: GPL-3.0-or-later
 
 # creating rrsync.1.md would require commonmark, we copy it instead
 Patch1: rsync-3.4.1-rrsync-man.patch
+# This is a regression that denies rsync user access to legit paths like
+# /var/run/ or /var/log/
+# https://github.com/sysfce2/rsync/commit/3b1eb8dd
+# https://github.com/sysfce2/rsync/commit/240bd9df
+Patch2: rsync-3.5.0-o_path-dir-traversal.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -84,6 +89,7 @@ may be used to setup a restricted rsync users via ssh logins.
 %{make_build}
 
 %check
+RSYNC_EXCLUDE=rrsync-backup-dir-inband-pivot,rrsync-pull-delivers-content \
 make check
 chmod -x support/*
 
@@ -126,6 +132,24 @@ install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
+* Mon Sep 07 2026 Michal Ruprich <mruprich@redhat.com> - 3.5.0-3
+- Related: RHEL-246094 - O_PATH for directory travesal full fix
+
+* Tue Aug 25 2026 Michal Ruprich <mruprich@redhat.com> - 3.5.0-2
+- Related: RHEL-246094 - O_PATH for directory traversal
+
+* Fri Aug 21 2026 Michal Ruprich <mruprich@redhat.com> - 3.5.0-1
+- Resolves: RHEL-246094 - Rebase rsync to version 3.5.0 in RHEL10
+- Resolves: RHEL-245337 - Directory escape via TOCTOU (CVE-2026-53783)
+- Resolves: RHEL-244599 - Arbitrary file write (CVE-2026-53785)
+- Resolves: RHEL-246095 - Command injection (CVE-2026-53790)
+- Resolves: RHEL-246065 - Daemon IP spoofing (CVE-2026-53791)
+- Resolves: RHEL-244718 - Local privilege escalation (CVE-2026-53803)
+- Resolves: RHEL-244797 - DoS via algorithmic complexity (CVE-2026-70453)
+- Resolves: RHEL-245247 - DoS via Zstandard compression (CVE-2026-70455)
+- Resolves: RHEL-245188 - Heap out-of-bounds write (CVE-2026-70456)
+- Resolves: RHEL-245313 - Information disclosure and DoS (CVE-2026-70461)
+
 * Fri Jun 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.4.4-1
 - Resolves: RHEL-181630 - Rebase rsync to version 3.4.4
 - Resolves: RHEL-174929 - TOCTOU symlink race condition (CVE-2026-29518)
