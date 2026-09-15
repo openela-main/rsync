@@ -1,6 +1,6 @@
-diff --git a/runtests.sh.old b/runtests.sh
+diff --git a/runtests.sh b/runtests.sh
 index ecb383e..1cd1d1a 100755
---- a/runtests.sh.old
+--- a/runtests.sh
 +++ b/runtests.sh
 @@ -276,6 +276,7 @@ do
  

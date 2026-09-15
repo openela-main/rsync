@@ -1,25 +1,23 @@
 %global _hardened_build 1
-
-%define isprerelease 0
 %define _lto_cflags %{nil}
-
-%if %isprerelease
-%define prerelease pre1
-%endif
 
 Summary: A program for synchronizing files over a network
 Name: rsync
-Version: 3.2.5
-Release: 7%{?dist}.2
+Version: 3.2.7
+Release: 1%{?dist}
 URL: https://rsync.samba.org/
 
-Source0: https://download.samba.org/pub/rsync/src/rsync-%{version}%{?prerelease}.tar.gz
-Source1: https://download.samba.org/pub/rsync/src/rsync-patches-%{version}%{?prerelease}.tar.gz
+Source0: https://download.samba.org/pub/rsync/src/rsync-%{version}.tar.gz
+Source1: https://download.samba.org/pub/rsync/src/rsync-patches-%{version}.tar.gz
 Source2: rsyncd.socket
 Source3: rsyncd.service
 Source4: rsyncd.conf
 Source5: rsyncd.sysconfig
 Source6: rsyncd@.service
+# This is a set of patches that was provided by the Upstream in a private repo
+# and it includes all the security patches from the latest versions already
+# backported to our older version.
+Source7: rsync-3.2.7-security-patches.tar.gz
 
 BuildRequires: make
 BuildRequires: gcc
@@ -32,6 +30,8 @@ BuildRequires: systemd
 BuildRequires: lz4-devel
 BuildRequires: openssl-devel
 BuildRequires: libzstd-devel
+BuildRequires: git-core
+BuildRequires: automake
 #Added virtual provide for zlib due to https://fedoraproject.org/wiki/Bundled_Libraries?rd=Packaging:Bundled_Libraries
 Provides: bundled(zlib) = 1.2.8
 License: GPLv3+
@@ -40,34 +40,15 @@ License: GPLv3+
 Patch1: rsync-3.2.2-runtests.patch
 #commonmark would be needed to generate manpage, so we simply copy it
 Patch2: rsync-3.2.5-rrsync-man.patch
-#A couple of fixes for the new filtering code
-Patch3: rsync-3.2.3-filtering-rules.patch
-Patch4: rsync-3.2.5-cve-2024-12085.patch
-Patch5: rsync-3.2.5-cve-2024-12087.patch
-Patch6: rsync-3.2.5-cve-2024-12088.patch
-Patch7: rsync-3.2.5-cve-2024-12747.patch
 # This is here for RHEL9 lifetime to avoid changes in defaults.
 # From RHEL10 this will have to be documented as a different
 # behaviour for compression.
 Patch8: rsync-3.2.5-default-compression.patch
-Patch9: rsync-3.2.5-ssh-askpass.patch
-Patch10: rsync-3.2.5-fix-cve-2025-10158.patch
-# https://github.com/RsyncProject/rsync/commit/866dd713
-# https://github.com/RsyncProject/rsync/commit/1a5ad81a
-# https://github.com/RsyncProject/rsync/commit/99b36291
-# https://github.com/RsyncProject/rsync/commit/24852cda
-# https://github.com/RsyncProject/rsync/commit/d22b6bc7
-# https://github.com/RsyncProject/rsync/commit/39b3074a
-# https://github.com/RsyncProject/rsync/commit/a277a06b
-# https://github.com/RsyncProject/rsync/commit/7c8a647c
-Patch11: rsync-3.2.5-fix-cve-2026-29518.patch
-# https://github.com/RsyncProject/rsync/commit/f6b39cca
-# https://github.com/RsyncProject/rsync/commit/5ce33659
-# https://github.com/RsyncProject/rsync/commit/3526884f
-# https://github.com/RsyncProject/rsync/commit/7192db98
-Patch12: rsync-3.2.5-fix-cve-2026-29518-regressions.patch
-# https://github.com/RsyncProject/rsync/commit/901041dd
-Patch13: rsync-3.2.5-fix-cve-2026-43618.patch
+Patch9: rsync-3.2.7-ssh-askpass.patch
+# adding a fix for the following issues as well so that rsync is able to
+# access legit directories such as /var/log and /var/run
+# https://github.com/RsyncProject/rsync/issues/1064
+Patch10: rsync-3.2.7-o_path-dir-traversal.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -97,29 +78,13 @@ This subpackage provides rrsync script and its manpage. rrsync
 may be used to setup a restricted rsync users via ssh logins.
 
 %prep
-# TAG: for pre versions use
-
-%if %isprerelease
-%setup -q -n rsync-%{version}%{?prerelease}
-%setup -q -b 1 -n rsync-%{version}%{?prerelease}
-%else
-%setup -q
-%setup -q -b 1
-%endif
-
-%patch 1 -p1 -b .runtests
-%patch 2 -p1 -b .rrsync-man
-%patch 3 -p1 -b .filtering-rules
-%patch 4 -p1 -b .cve-2024-12085
-%patch 5 -p1 -b .cve-2024-12087
-%patch 6 -p1 -b .cve-2024-12088
-%patch 7 -p1 -b .cve-2024-12747
-%patch 8 -p1 -b .default-compression
-%patch 9 -p1 -b .ssh-askpass
-%patch 10 -p1 -b .cve-2025-10158
-%patch 11 -p1 -b .cve-2026-29518
-%patch 12 -p1 -b .cve-2026-29518-regressions
-%patch 13 -p1 -b .cve-2026-43618
+%autosetup -S git -N
+tar xf %{SOURCE7}
+git am --keep-non-patch patches/*.patch
+rm -rf patches
+%autopatch
+aclocal -I m4
+./prepare-source build
 
 %build
 %configure --disable-xxhash --with-rrsync
@@ -170,6 +135,9 @@ install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
+* Thu Aug 27 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.7-1
+- Resolves: RHEL-248836 - Rebase rsync to version 3.2.7 in RHEL9
+
 * Mon Jun 15 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-7.2
  - Fix integer overflow in compressed-token decoding (CVE-2026-43618)
  - Resolves: RHEL-174932

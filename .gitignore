@@ -1,2 +1,3 @@
-SOURCES/rsync-3.2.5.tar.gz
-SOURCES/rsync-patches-3.2.5.tar.gz
+SOURCES/rsync-3.2.7-security-patches.tar.gz
+SOURCES/rsync-3.2.7.tar.gz
+SOURCES/rsync-patches-3.2.7.tar.gz

@@ -11,5 +11,5 @@ index 7222a83..630ca03 100644
 +	if (!getenv("SSH_ASKPASS"))
 +		unset_env_var("DISPLAY");
  
- 	memset(&stats, 0, sizeof(stats));
- 
+ #if defined USE_OPENSSL && defined SET_OPENSSL_CONF
+ #define TO_STR2(x) #x
