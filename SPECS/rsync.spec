@@ -9,7 +9,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.1.3
-Release: 27%{?dist}
+Release: 28%{?dist}
 Group: Applications/Internet
 URL: http://rsync.samba.org/
 
@@ -20,6 +20,11 @@ Source3: rsyncd.service
 Source4: rsyncd.conf
 Source5: rsyncd.sysconfig
 Source6: rsyncd@.service
+# This is a set of patches that was provided by the Upstream in a private repo
+# and it includes all the security patches from the latest version backported
+# to rsync-3.2.7. I used this set of patches to backport all the security
+# commits to rsync-3.1.3
+Source7: rsync-3.1.3-security-patches.tar.gz
 
 BuildRequires: libacl-devel, libattr-devel, autoconf, popt-devel, systemd
 #Requires: zlib
@@ -69,6 +74,11 @@ Patch23: rsync-3.1.3-fix-cve-2026-29518.patch
 Patch24: rsync-3.1.3-fix-cve-2026-29518-regressions.patch
 # https://github.com/RsyncProject/rsync/commit/c44c90e9460c666c965446a8c0957f0b9fa4c66a
 Patch25: rsync-3.1.3-fix-cve-2026-43618.patch
+# This is a regression that denies rsync user access to legit paths like
+# /var/run/ or /var/log/
+# https://github.com/RsyncProject/rsync/commit/3b1eb8dd
+# https://github.com/RsyncProject/rsync/commit/240bd9df
+Patch26: rsync-3.1.3-o_path-dir-traversal.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -133,6 +143,17 @@ patch -p1 -i patches/copy-devices.diff
 %patch24 -p1 -b .cve-2026-29518-regressions
 %patch25 -p1 -b .cve-2026-43618
 
+# Applying the security patches on top of the previous patches
+tar xf %{SOURCE7}
+for patchfile in security-patches/*.patch; do
+  patch -p1 -i $patchfile
+done
+rm -rf security-patches
+
+%patch26 -p1 -b .o_path
+
+./prepare-source build
+
 %build
 %configure
 # --with-included-zlib=no temporary disabled because of #1043965
@@ -178,6 +199,10 @@ chmod -x support/*
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
+* Tue Sep 22 2026 Michal Ruprich <mruprich@redhat.com> - 3.1.3-28
+- Resolves: RHEL-256903 - Fix latest CVEs in rsync in RHEL8
+- Fixing a regression introduced with the security patches
+
 * Mon Jun 15 2026 Michal Ruprich <mruprich@redhat.com> - 3.1.3-27
 - Integer overflow in compressed-token decoding (CVE-2026-43618)
 - Resolves: RHEL-174951
