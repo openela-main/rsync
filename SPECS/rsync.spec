@@ -9,7 +9,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.1.3
-Release: 28%{?dist}
+Release: 30%{?dist}
 Group: Applications/Internet
 URL: http://rsync.samba.org/
 
@@ -27,6 +27,7 @@ Source6: rsyncd@.service
 Source7: rsync-3.1.3-security-patches.tar.gz
 
 BuildRequires: libacl-devel, libattr-devel, autoconf, popt-devel, systemd
+BuildRequires: platform-python
 #Requires: zlib
 #Added virtual provide for zlib due to https://fedoraproject.org/wiki/Bundled_Libraries?rd=Packaging:Bundled_Libraries
 Provides: bundled(zlib) = 1.2.8
@@ -55,16 +56,16 @@ Patch18: rsync-3.1.3-cve-2024-12747.patch
 Patch19: rsync-3.1.3-cve-2025-4638.patch
 Patch20: rsync-3.1.3-trust-sender.patch
 Patch21: rsync-3.1.3-cve-2025-10158.patch
-# https://github.com/RsyncProject/rsync/commit/bb0a8118c2d2ab01140bac5e4e327e5e1ef90c9c
+# https://github.com/RsyncProject/rsync/commit/bb0a8118
 Patch22: rsync-3.1.3-cve-2026-41035.patch
-# https://github.com/RsyncProject/rsync/commit/1a5ad81add1004354a3d8ba841b94ffe19cd2505
-# https://github.com/RsyncProject/rsync/commit/99b36291d06ca66229942c7a525a1f5566f10c85
-# https://github.com/RsyncProject/rsync/commit/72d1cf1c288e5c526e906db2edafbf3d55762668
-# https://github.com/RsyncProject/rsync/commit/61d987c54a472d88855c5fbef3a4c7b51696f93a
-# https://github.com/RsyncProject/rsync/commit/24852cda3db38e2f2cd78a13703373c77f75f4d5
-# https://github.com/RsyncProject/rsync/commit/d22b6bc7d1b1d7be9df1c0c6db1599cb7d5fd82c
-# https://github.com/RsyncProject/rsync/commit/39b3074a1ab18705cd685fe0659fc958c8cd3db5
-# https://github.com/RsyncProject/rsync/commit/a277a06b1017b4cf6bb0fe33d5823869ed02dfd9
+# https://github.com/RsyncProject/rsync/commit/1a5ad81a
+# https://github.com/RsyncProject/rsync/commit/99b36291
+# https://github.com/RsyncProject/rsync/commit/72d1cf1c
+# https://github.com/RsyncProject/rsync/commit/61d987c5
+# https://github.com/RsyncProject/rsync/commit/24852cda
+# https://github.com/RsyncProject/rsync/commit/d22b6bc7
+# https://github.com/RsyncProject/rsync/commit/39b3074a
+# https://github.com/RsyncProject/rsync/commit/a277a06b
 Patch23: rsync-3.1.3-fix-cve-2026-29518.patch
 # Backporting a couple of regression fixes
 # https://github.com/RsyncProject/rsync/commit/f6b39cca
@@ -72,13 +73,18 @@ Patch23: rsync-3.1.3-fix-cve-2026-29518.patch
 # https://github.com/RsyncProject/rsync/commit/3526884f
 # https://github.com/RsyncProject/rsync/commit/7192db98
 Patch24: rsync-3.1.3-fix-cve-2026-29518-regressions.patch
-# https://github.com/RsyncProject/rsync/commit/c44c90e9460c666c965446a8c0957f0b9fa4c66a
+# https://github.com/RsyncProject/rsync/commit/c44c90e9
 Patch25: rsync-3.1.3-fix-cve-2026-43618.patch
 # This is a regression that denies rsync user access to legit paths like
 # /var/run/ or /var/log/
 # https://github.com/RsyncProject/rsync/commit/3b1eb8dd
 # https://github.com/RsyncProject/rsync/commit/240bd9df
 Patch26: rsync-3.1.3-o_path-dir-traversal.patch
+# https://github.com/RsyncProject/rsync/commit/a7404a9a
+Patch27: rsync-3.1.3-fix-cve-2026-119741.patch
+# Tests for latest backports are written in python3 instead of bash
+# runtests.sh needs to pick up the .py files as well and be able to run those
+Patch28: rsync-3.1.3-runtests-python.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -151,6 +157,8 @@ done
 rm -rf security-patches
 
 %patch26 -p1 -b .o_path
+%patch27 -p1 -b .cve-2026-119741
+%patch28 -p1 -b .runtests-python
 
 ./prepare-source build
 
@@ -170,7 +178,7 @@ install -D -m644 %{SOURCE5} $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig/rsyncd
 install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
 
 %check
-make check
+PYTHON3=/usr/libexec/platform-python make check
 #scripts in support/* are needed to run upstream tests but after install these should not be executable
 chmod -x support/*
 
@@ -199,6 +207,14 @@ chmod -x support/*
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
+* Thu Nov 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.1.3-30
+- Making it possible to run new python unit tests
+- Resolves: RHEL-300050
+
+* Tue Nov 03 2026 RHEL Packaging Agent <redhat-ymir-agent@redhat.com> - 3.1.3-29
+- DoS via crafted checksums during delta transfer (CVE-2026-119741)
+- Resolves: RHEL-300050
+
 * Tue Sep 22 2026 Michal Ruprich <mruprich@redhat.com> - 3.1.3-28
 - Resolves: RHEL-256903 - Fix latest CVEs in rsync in RHEL8
 - Fixing a regression introduced with the security patches
