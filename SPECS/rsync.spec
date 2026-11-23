@@ -3,7 +3,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.5.0
-Release: 3%{?dist}
+Release: 4%{?dist}
 URL: https://rsync.samba.org/
 
 Source0: https://download.samba.org/pub/rsync/src/rsync-%{version}.tar.gz
@@ -44,6 +44,11 @@ Patch1: rsync-3.4.1-rrsync-man.patch
 # https://github.com/sysfce2/rsync/commit/3b1eb8dd
 # https://github.com/sysfce2/rsync/commit/240bd9df
 Patch2: rsync-3.5.0-o_path-dir-traversal.patch
+
+# https://github.com/RsyncProject/rsync/commit/a7404a9a
+Patch3: rsync-3.5.0-fix-cve-2026-119741.patch
+# https://github.com/RsyncProject/rsync/commit/b70a61f3
+Patch4: rsync-3.5.0-max-alloc-overflow.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -132,28 +137,57 @@ install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
-* Mon Sep 07 2026 Michal Ruprich <mruprich@redhat.com> - 3.5.0-3
-- Related: RHEL-246094 - O_PATH for directory travesal full fix
+* Wed Nov 18 2026 Michal Ruprich <mruprich@redhat.com> - 3.5.0-4
+- Bumping due to pipeline errors
+- Resolves: RHEL-306390
+- Resolves: RHEL-300046
 
-* Tue Aug 25 2026 Michal Ruprich <mruprich@redhat.com> - 3.5.0-2
-- Related: RHEL-246094 - O_PATH for directory traversal
+* Fri Nov 13 2026 Michal Ruprich <mruprich@redhat.com> - 3.5.0-3
+- rsync stack overflow reporting --max-alloc=SIZE has been exceeded
+- Resolves: RHEL-306390
 
-* Fri Aug 21 2026 Michal Ruprich <mruprich@redhat.com> - 3.5.0-1
-- Resolves: RHEL-246094 - Rebase rsync to version 3.5.0 in RHEL10
-- Resolves: RHEL-245337 - Directory escape via TOCTOU (CVE-2026-53783)
-- Resolves: RHEL-244599 - Arbitrary file write (CVE-2026-53785)
-- Resolves: RHEL-246095 - Command injection (CVE-2026-53790)
-- Resolves: RHEL-246065 - Daemon IP spoofing (CVE-2026-53791)
-- Resolves: RHEL-244718 - Local privilege escalation (CVE-2026-53803)
-- Resolves: RHEL-244797 - DoS via algorithmic complexity (CVE-2026-70453)
-- Resolves: RHEL-245247 - DoS via Zstandard compression (CVE-2026-70455)
-- Resolves: RHEL-245188 - Heap out-of-bounds write (CVE-2026-70456)
-- Resolves: RHEL-245313 - Information disclosure and DoS (CVE-2026-70461)
+* Thu Nov 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.5.0-2
+- DoS via crafted checksums during delta transfer (CVE-2026-119741)
+- Resolves: RHEL-300046
 
-* Fri Jun 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.4.4-1
-- Resolves: RHEL-181630 - Rebase rsync to version 3.4.4
-- Resolves: RHEL-174929 - TOCTOU symlink race condition (CVE-2026-29518)
-- Resolves: RHEL-174949 - Memory disclosure via int overflow (CVE-2026-43618)
+* Mon Oct 26 2026 Michal Ruprich <mruprich@redhat.com> - 3.5.0-1
+- Rebase of rsync to 3.5.0
+- Resolves: RHEL-245341 - Directory escape via TOCTOU race condition in rrsync (CVE-2026-53783)
+- Resolves: RHEL-247073 - Unauthorized File Access via Symlink Module Root (CVE-2026-53784)
+- Resolves: RHEL-244603 - Arbitrary file write via path traversal in --relative mode (CVE-2026-53785)
+- Resolves: RHEL-255139 - Arbitrary file deletion via malicious file list (CVE-2026-53789)
+- Resolves: RHEL-246092 - Command Injection via Multiple Code Paths (CVE-2026-53790)
+- Resolves: RHEL-246066 - Daemon IP Spoofing via PROXY Protocol Header (CVE-2026-53791)
+- Resolves: RHEL-246505 - Path Confinement Bypass in Chroot Mode (CVE-2026-53793)
+- Resolves: RHEL-246193 - Denial of Service via --max-alloc=0 logic error (CVE-2026-53794)
+- Resolves: RHEL-246168 - Arbitrary file write via --temp-dir or --link-dest options (CVE-2026-53795)
+- Resolves: RHEL-255049 - Arbitrary File Read via Symlink Following (CVE-2026-53802)
+- Resolves: RHEL-244720 - Local Privilege Escalation via Symlink Following (CVE-2026-53803)
+- Resolves: RHEL-246133 - Access Control Bypass via DNS Resolution Failure (CVE-2026-70452)
+- Resolves: RHEL-244805 - DoS via Algorithmic Complexity (CVE-2026-70453)
+- Resolves: RHEL-247289 - TLS Certificate Validation Bypass allows interception of encrypted sessions (CVE-2026-70454)
+- Resolves: RHEL-245248 - DoS via Zstandard compression thread exhaustion (CVE-2026-70455)
+- Resolves: RHEL-245190 - Heap Out-of-Bounds Write via crafted argument list (CVE-2026-70456)
+- Resolves: RHEL-255114 - Memory corruption via out-of-bounds write in size parsing (CVE-2026-70457)
+- Resolves: RHEL-246856 - Memory corruption via crafted file entries (CVE-2026-70458)
+- Resolves: RHEL-246837 - Path Traversal via --partial-dir/--backup-dir Symlink (CVE-2026-70460)
+- Resolves: RHEL-245315 - Information disclosure and denial of service via crafted files-from entry (CVE-2026-70461)
+- Resolves: RHEL-247145 - Authorization bypass via `auth users` directive parsing (CVE-2026-70463)
+- Resolves: RHEL-246962 - DoS via handshake stall (CVE-2026-70464)
+
+* Mon Jun 22 2026 Michal Ruprich <mruprich@redhat.com> - 3.4.4-1
+- Resolves: RHEL-186589 - Rebase rsync to version 3.4.4
+- Resolves: RHEL-174931 - TOCTOU symlink race condition (CVE-2026-29518)
+- Resolves: RHEL-174947 - Memory disclosure via int overflow (CVE-2026-43618)
+
+* Tue May 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.4.1-6
+- Resolves: RHEL-172276 - Fix regression introduced with CVE-2024-12086 fix
+
+* Tue Apr 28 2026 Michal Ruprich <mruprich@redhat.com> - 3.4.1-5
+- Resolves: RHEL-169137 - CVE-2026-41035 - Use-after-free vulnerability in extended attribute handling
+
+* Mon Apr 13 2026 Michal Ruprich <mruprich@redhat.com> - 3.4.1-4
+- Resolves: RHEL-152527 - CVE-2025-10158 Out of bounds array access via negative index
 
 * Thu Oct 09 2025 Michal Ruprich <mruprich@redhat.com> - 3.4.1-3
 - Resolves: RHEL-118549 - Do not clear DISPLAY unconditionally

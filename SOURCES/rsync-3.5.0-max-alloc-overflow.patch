@@ -1,0 +1,233 @@
+From b70a61f394d0d4c71ee349a9260b4ed8babbb6be Mon Sep 17 00:00:00 2001
+From: Andrew Tridgell <andrew@tridgell.net>
+Date: Thu, 15 Oct 2026 11:59:02 +1100
+Subject: [PATCH] log: avoid recursive deletion-message overflow (#1130)
+
+* log: avoid recursive deletion-message overflow
+
+A quiet daemon receiver queued one MSG_DELETED per path until the generator hit --max-alloc, so skip names the client did not request. If requested output legitimately fills the queue, keep allocator error reporting from re-entering the same buffer and exhausting the stack. Preserve explicit deletion requests across the daemon max-verbosity clamp.
+
+* NEWS: note daemon deletion-message overflow fix
+---
+ NEWS.md                                      |   3 +
+ clientserver.c                               |   6 +
+ io.c                                         |   7 ++
+ log.c                                        |  21 ++--
+ testsuite/daemon-delete-msg-overflow_test.py | 120 +++++++++++++++++++
+ 5 files changed, 148 insertions(+), 9 deletions(-)
+ create mode 100644 testsuite/daemon-delete-msg-overflow_test.py
+
+diff --git a/clientserver.c b/clientserver.c
+index 1a20e4432..42a31ee29 100644
+--- a/clientserver.c
++++ b/clientserver.c
+@@ -60,6 +60,7 @@ extern int logfile_format_has_o_or_i;
+ extern char *bind_address;
+ extern char *config_file;
+ extern char *logfile_format;
++extern char *stdout_format;
+ extern char *files_from;
+ extern char *tmpdir;
+ extern char *early_input_file;
+@@ -1222,6 +1223,11 @@ static int rsync_module(int f_in, int f_out, int i, const char *addr, const char
+ 	}
+ 
+ #ifndef DEBUG
++	/* Remember an explicit deletion-output request before max verbosity
++	 * clamps INFO_DEL.  stdout_format is also the server-side marker used
++	 * to decide whether deletion names need to be sent to the client. */
++	if (protocol_version >= 29 && INFO_GTE(DEL, 1) && !stdout_format)
++		stdout_format = "X";
+ 	/* don't allow the logs to be flooded too fast */
+ 	limit_output_verbosity(lp_max_verbosity(module_id));
+ #endif
+diff --git a/io.c b/io.c
+index 2e2fccbd0..7fbd5a60a 100644
+--- a/io.c
++++ b/io.c
+@@ -1087,12 +1087,17 @@ void noop_io_until_death(void)
+ /* Buffer a message for the multiplexed output stream.  Is not used for (normal) MSG_DATA. */
+ int send_msg(enum msgcode code, const char *buf, size_t len, int convert)
+ {
++	static int growing_msg_buffer;
+ 	char *hdr;
+ 	size_t needed, pos;
+ 	BOOL want_debug = DEBUG_GTE(IO, 1) && convert >= 0 && (msgs2stderr == 1 || code != MSG_INFO);
+ 
+ 	if (!OUT_MULTIPLEXED)
+ 		return 0;
++	/* A fatal realloc_xbuf() failure is reported via rprintf(), which would
++	 * otherwise call send_msg() again and try to grow the same full buffer. */
++	if (growing_msg_buffer)
++		return 0;
+ 
+ 	if (want_debug) {
+ 		rprintf(FINFO, "[%s] send_msg(%d, %" SIZE_T_FMT_MOD "d)\n",
+@@ -1118,7 +1123,9 @@ int send_msg(enum msgcode code, const char *buf, size_t len, int convert)
+ 		else { /* We sometimes allow the iobuf.msg size to increase to avoid a deadlock. */
+ 			size_t old_size = iobuf.msg.size;
+ 			restore_iobuf_size(&iobuf.msg);
++			growing_msg_buffer = 1;
+ 			realloc_xbuf(&iobuf.msg, iobuf.msg.size * 2);
++			growing_msg_buffer = 0;
+ 			if (iobuf.msg.pos + iobuf.msg.len > old_size)
+ 				memcpy(iobuf.msg.buf + old_size, iobuf.msg.buf, iobuf.msg.pos + iobuf.msg.len - old_size);
+ 		}
+diff --git a/log.c b/log.c
+index aecf608a3..bf30df98d 100644
+--- a/log.c
++++ b/log.c
+@@ -995,15 +995,18 @@ void log_delete(const char *fname, int mode)
+ 
+ 	file->mode = mode;
+ 
+-	if (am_server && protocol_version >= 29 && len < MAXPATHLEN) {
+-		if (S_ISDIR(mode))
+-			len++; /* directories include trailing null */
+-		send_msg(MSG_DELETED, fname, len, am_generator);
+-	} else if (!INFO_GTE(DEL, 1) && !stdout_format)
+-		;
+-	else {
+-		fmt = stdout_format_has_o_or_i ? stdout_format : "deleting %n";
+-		log_formatted(FCLIENT, fmt, "del.", file, fname, ITEM_DELETED, NULL);
++	if (INFO_GTE(DEL, 1) || stdout_format) {
++		if (am_server && protocol_version >= 29 && len < MAXPATHLEN) {
++			/* The generator may be unable to flush these messages until
++			 * the sender's file list is complete.  Only queue names that
++			 * the client requested as per-item output. */
++			if (S_ISDIR(mode))
++				len++; /* directories include trailing null */
++			send_msg(MSG_DELETED, fname, len, am_generator);
++		} else {
++			fmt = stdout_format_has_o_or_i ? stdout_format : "deleting %n";
++			log_formatted(FCLIENT, fmt, "del.", file, fname, ITEM_DELETED, NULL);
++		}
+ 	}
+ 
+ 	if (!logfile_name || dry_run || !logfile_format)
+diff --git a/testsuite/daemon-delete-msg-overflow_test.py b/testsuite/daemon-delete-msg-overflow_test.py
+new file mode 100644
+index 000000000..150f9c27b
+--- /dev/null
++++ b/testsuite/daemon-delete-msg-overflow_test.py
+@@ -0,0 +1,120 @@
++#!/usr/bin/env python3
++"""A quiet daemon delete must not queue every deleted pathname.
++
++The daemon-side generator cannot always flush multiplexed messages while the
++sender is still producing its file list, so send_msg() lets its message buffer
++grow.  Sending MSG_DELETED for a quiet transfer made a large recursive delete
++grow that buffer without bound even though the client would print none of the
++names.  At --max-alloc the allocation error itself was sent through the same
++full buffer, recursively exhausting the stack.
++
++Use long paths to reach the 1-MiB minimum --max-alloc with a modest number of
++files.  --delete-excluded and --backup-dir mirror the reported daemon failure.
++"""
++
++import subprocess
++
++from rsyncfns import (
++    FROMDIR, SCRATCHDIR, TODIR,
++    build_rsyncd_conf, makepath, rmtree, rsync_argv, start_test_daemon,
++    test_fail,
++)
++
++
++DAEMON_PORT = 12969
++FILE_COUNT = 1400
++
++src = FROMDIR
++dst = TODIR / 'current'
++history = dst / 'history'
++
++rmtree(src)
++rmtree(TODIR)
++makepath(src, dst)
++(src / 'keep').write_text('keep\n')
++(dst / 'keep').write_text('keep\n')
++
++# Keep the complete path below the most restrictive systems' practical limits.
++# The messages total over 1 MiB; more than twice the 512-KiB queue occupancy
++# that makes its next doubling hit (and be rejected by) --max-alloc=1m.
++deep = dst / 'runs'
++for i in range(10):
++    deep /= f'd{i}-' + 'x' * 76
++makepath(deep)
++for i in range(FILE_COUNT):
++    (deep / f'stale-{i:04d}').touch()
++
++conf = build_rsyncd_conf()
++url = start_test_daemon(conf, DAEMON_PORT)
++proc = subprocess.run(
++    rsync_argv(
++        '-a', '--delete', '--delete-excluded', '--backup',
++        '--backup-dir=history', '--exclude=/runs/', '--max-alloc=1m',
++        f'{src}/', f'{url}test-to/current/',
++    ),
++    capture_output=True,
++    text=True,
++)
++out = proc.stdout + proc.stderr
++if proc.returncode != 0:
++    test_fail(f'quiet daemon delete exited {proc.returncode}:\n{out}')
++if out:
++    test_fail(f'quiet daemon delete unexpectedly listed deleted names:\n{out}')
++if (dst / 'runs').exists():
++    test_fail('excluded destination tree was not deleted')
++
++backed_up = history / 'runs'
++if len(list(backed_up.rglob('stale-*'))) != FILE_COUNT:
++    test_fail('deleted files were not all moved into the backup directory')
++
++# A requested deletion list is still allowed to hit --max-alloc, but reporting
++# that error must not recurse through the same full queue until the daemon
++# exhausts its stack.  Restore the files and repeat with deletion output on.
++backed_up.rename(dst / 'runs')
++proc = subprocess.run(
++    rsync_argv(
++        '-av', '--delete', '--delete-excluded', '--backup',
++        '--backup-dir=history', '--exclude=/runs/', '--max-alloc=1m',
++        f'{src}/', f'{url}test-to/current/',
++    ),
++    capture_output=True,
++    text=True,
++)
++out = proc.stdout + proc.stderr
++if proc.returncode == 0:
++    test_fail('verbose daemon delete unexpectedly stayed below --max-alloc')
++if 'Segmentation fault' in out:
++    test_fail(f'verbose daemon delete recursively exhausted its stack:\n{out}')
++
++alloc_errors = (SCRATCHDIR / 'rsyncd.log').read_text().count(
++    'exceeded --max-alloc='
++)
++if alloc_errors != 1:
++    test_fail(f'expected one daemon --max-alloc error, found {alloc_errors}')
++
++# The daemon's max-verbosity clamp applies after parsing the peer's options.
++# It must not erase the fact that the client explicitly requested deletions.
++conf_text = conf.read_text()
++clamped_conf = conf_text.replace('max verbosity = 4', 'max verbosity = 0')
++if clamped_conf == conf_text:
++    test_fail('could not lower max verbosity in the daemon configuration')
++conf.write_text(clamped_conf)
++rmtree(dst)
++makepath(dst)
++(dst / 'keep').write_text('keep\n')
++(dst / 'clamped').write_text('delete me\n')
++proc = subprocess.run(
++    rsync_argv(
++        '-a', '--delete', '--info=del',
++        f'{src}/', f'{url}test-to/current/',
++    ),
++    capture_output=True,
++    text=True,
++)
++out = proc.stdout + proc.stderr
++if proc.returncode != 0:
++    test_fail(f'max-verbosity daemon delete exited {proc.returncode}:\n{out}')
++if 'deleting clamped' not in proc.stdout:
++    test_fail(f'max verbosity hid a requested deletion:\n{out}')
++
++print('daemon-delete-msg-overflow: deletion output and allocation failure verified')
