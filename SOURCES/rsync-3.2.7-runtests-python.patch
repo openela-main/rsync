@@ -1,0 +1,396 @@
+diff --git a/runtests.sh b/runtests.sh
+index eecf530..37137e9 100755
+--- a/runtests.sh
++++ b/runtests.sh
+@@ -174,7 +174,10 @@ if grep -E '#undef CHOWN_MODIFIES_SYMLINK' config.h >/dev/null; then
+     TLS_ARGS="$TLS_ARGS -L"
+ fi
+ 
+-export POSIXLY_CORRECT TOOLDIR srcdir RSYNC TLS_ARGS
++PYTHONPATH="$srcdir/testsuite${PYTHONPATH:+:$PYTHONPATH}"
++PYTHON3="${PYTHON3:-python3}"
++
++export POSIXLY_CORRECT TOOLDIR srcdir RSYNC TLS_ARGS PYTHONPATH
+ 
+ echo "============================================================"
+ echo "$0 running in $TOOLDIR"
+@@ -266,14 +269,16 @@ maybe_discard_scratch() {
+ }
+ 
+ if [ "x$whichtests" = x ]; then
+-    whichtests="*.test"
++    testlist=`echo "$suitedir"/*.test "$suitedir"/*_test.py`
+     full_run=yes
+ else
++    testlist=`echo $suitedir/$whichtests`
+     full_run=no
+ fi
+ 
+-for testscript in $suitedir/$whichtests; do
+-    testbase=`echo $testscript | sed -e 's!.*/!!' -e 's/.test\$//'`
++for testscript in $testlist; do
++    [ -f "$testscript" ] || continue
++    testbase=`echo $testscript | sed -e 's!.*/!!' -e 's/\.test\$//' -e 's/_test\.py\$//'`
+     scratchdir="$scratchbase/$testbase"
+ 
+     prep_scratch
+@@ -285,7 +290,11 @@ for testscript in $suitedir/$whichtests; do
+     esac
+ 
+     set +e
+-    "$TOOLDIR/"testrun $RUNSHFLAGS "$testscript" >"$scratchdir/test.log" 2>&1
++    case "$testscript" in
++    *.py) "$TOOLDIR/"testrun -c 'exec "$1" "$0"' "$testscript" "$PYTHON3" \
++             >"$scratchdir/test.log" 2>&1 ;;
++    *)    "$TOOLDIR/"testrun $RUNSHFLAGS "$testscript" >"$scratchdir/test.log" 2>&1 ;;
++    esac
+     result=$?
+     set -e
+ 
+diff --git a/testsuite/rsyncfns.py b/testsuite/rsyncfns.py
+new file mode 100644
+index 0000000..26eccf7
+--- /dev/null
++++ b/testsuite/rsyncfns.py
+@@ -0,0 +1,68 @@
++"""Minimal rsync.fns counterpart for the Python regression tests (3.2.7 backport)."""
++import filecmp, os, re, shlex, shutil, subprocess, sys
++from pathlib import Path
++
++FAIL, ERROR, SKIP, XFAIL = 1, 2, 77, 78
++
++def _required(name):
++    v = os.environ.get(name)
++    if not v:
++        sys.stderr.write("rsyncfns: required env var %s is not set\n" % name)
++        sys.exit(ERROR)
++    return v
++
++SCRATCHDIR = Path(_required('scratchdir'))
++SRCDIR     = Path(_required('srcdir'))
++TOOLDIR    = Path(_required('TOOLDIR'))
++SUITEDIR   = Path(os.environ.get('suitedir', SRCDIR / 'testsuite'))
++RSYNC      = _required('RSYNC')
++TLS_ARGS   = os.environ.get('TLS_ARGS', '')
++os.umask(0o022)
++os.environ['HOME'] = str(SCRATCHDIR)
++
++FROMDIR = SCRATCHDIR / 'from'
++TODIR   = SCRATCHDIR / 'to'
++CHKDIR  = SCRATCHDIR / 'chk'
++
++def split_rsync_cmd(cmd):
++    if os.path.isfile(cmd):
++        return [cmd]
++    for m in reversed(list(re.finditer(r'\s+', cmd))):
++        head = cmd[:m.start()]
++        if os.path.isfile(head):
++            return [head] + shlex.split(cmd[m.start():])
++    return shlex.split(cmd)
++
++def rsync_argv(*args):
++    return split_rsync_cmd(RSYNC) + [str(a) for a in args]
++
++def test_fail(msg):
++    sys.stderr.write(msg.rstrip() + '\n'); sys.exit(FAIL)
++
++def test_skipped(msg):
++    sys.stderr.write(msg.rstrip() + '\n')
++    (SCRATCHDIR / 'whyskipped').write_text(msg.rstrip() + '\n')
++    sys.exit(SKIP)
++
++def run_rsync(*args, check=True, capture_output=False):
++    argv = rsync_argv(*args)
++    if capture_output:
++        proc = subprocess.run(argv, capture_output=True, text=True)
++    else:
++        proc = subprocess.run(argv)
++    if check and proc.returncode != 0:
++        test_fail("rsync exited %d: %s" % (proc.returncode, ' '.join(argv)))
++    return proc
++
++def rmtree(path):
++    p = Path(path)
++    if p.exists() or p.is_symlink():
++        shutil.rmtree(p, ignore_errors=True)
++
++def makepath(*paths):
++    for p in paths:
++        os.makedirs(p, exist_ok=True)
++
++def assert_same(a, b, label=''):
++    if not filecmp.cmp(str(a), str(b), shallow=False):
++        test_fail("%scontent differs between %s and %s" % (label and label + ': ', a, b))
+diff --git a/testsuite/rsyncfns.py b/testsuite/rsyncfns.py
+new file mode 100644
+index 0000000..b680b2e
+--- /dev/null
++++ b/testsuite/rsyncfns.py
+@@ -0,0 +1,267 @@
++"""Minimal rsync.fns counterpart for the Python regression tests (3.2.7 backport)."""
++import atexit, filecmp, os, re, shlex, shutil, socket, subprocess, sys, time
++from pathlib import Path
++
++FAIL, ERROR, SKIP, XFAIL = 1, 2, 77, 78
++
++def _required(name):
++    v = os.environ.get(name)
++    if not v:
++        sys.stderr.write("rsyncfns: required env var %s is not set\n" % name)
++        sys.exit(ERROR)
++    return v
++
++SCRATCHDIR = Path(_required('scratchdir'))
++SRCDIR     = Path(_required('srcdir'))
++TOOLDIR    = Path(_required('TOOLDIR'))
++SUITEDIR   = Path(os.environ.get('suitedir', SRCDIR / 'testsuite'))
++RSYNC      = _required('RSYNC')
++# The daemon/server side of a transfer. Upstream lets the runner point this at
++# a second binary; runtests.sh has no such option, so it always equals RSYNC.
++RSYNC_PEER = os.environ.get('RSYNC_PEER', RSYNC)
++TLS_ARGS   = os.environ.get('TLS_ARGS', '')
++# Default transport for daemon tests is the stdio pipe (no listening socket).
++# Set RSYNC_TEST_USE_TCP=1 to start a real rsyncd on loopback instead.
++USE_TCP    = os.environ.get('RSYNC_TEST_USE_TCP') == '1'
++os.umask(0o022)
++os.environ['HOME'] = str(SCRATCHDIR)
++
++FROMDIR = SCRATCHDIR / 'from'
++TODIR   = SCRATCHDIR / 'to'
++CHKDIR  = SCRATCHDIR / 'chk'
++
++def split_rsync_cmd(cmd):
++    if os.path.isfile(cmd):
++        return [cmd]
++    for m in reversed(list(re.finditer(r'\s+', cmd))):
++        head = cmd[:m.start()]
++        if os.path.isfile(head):
++            return [head] + shlex.split(cmd[m.start():])
++    return shlex.split(cmd)
++
++def rsync_argv(*args):
++    return split_rsync_cmd(RSYNC) + [str(a) for a in args]
++
++def test_fail(msg):
++    sys.stderr.write(msg.rstrip() + '\n'); sys.exit(FAIL)
++
++def test_skipped(msg):
++    sys.stderr.write(msg.rstrip() + '\n')
++    (SCRATCHDIR / 'whyskipped').write_text(msg.rstrip() + '\n')
++    sys.exit(SKIP)
++
++def run_rsync(*args, check=True, capture_output=False):
++    argv = rsync_argv(*args)
++    if capture_output:
++        # capture_output= and text= are Python 3.7+; spell it the 3.6 way so
++        # this works on RHEL 8's platform-python.
++        proc = subprocess.run(argv, stdout=subprocess.PIPE,
++                              stderr=subprocess.PIPE, universal_newlines=True)
++    else:
++        proc = subprocess.run(argv)
++    if check and proc.returncode != 0:
++        test_fail("rsync exited %d: %s" % (proc.returncode, ' '.join(argv)))
++    return proc
++
++def rmtree(path):
++    p = Path(path)
++    if p.exists() or p.is_symlink():
++        shutil.rmtree(p, ignore_errors=True)
++
++def makepath(*paths):
++    for p in paths:
++        os.makedirs(p, exist_ok=True)
++
++def assert_same(a, b, label=''):
++    if not filecmp.cmp(str(a), str(b), shallow=False):
++        test_fail("%scontent differs between %s and %s" % (label and label + ': ', a, b))
++
++
++# --- daemon support --------------------------------------------------------
++
++def get_testuid():
++    return os.getuid()
++
++def get_rootuid():
++    return 0
++
++def get_rootgid():
++    return 0
++
++def rsync_path_arg(cmd=None):
++    """Value for --rsync-path / RSYNC_CONNECT_PROG, quoted for the shell that
++    re-parses it. A wrapper command must stay several words, while a build path
++    containing a space must survive as one, so quote word by word.
++
++    Upstream uses shlex.join(); that is Python 3.8+, and this shim has to run on
++    RHEL 8's 3.6, so join the shlex.quote()d words by hand.
++    """
++    return ' '.join(shlex.quote(a)
++                    for a in split_rsync_cmd(RSYNC_PEER if cmd is None else cmd))
++
++
++def build_rsyncd_conf():
++    """Equivalent of rsync.fns build_rsyncd_conf.
++
++    Writes $scratchdir/test-rsyncd.conf with the four standard modules
++    (test-from, test-to, test-scratch, test-hidden) plus the $scratchdir/ignore23
++    wrapper, which propagates rsync's exit status except for code 23 (vanished
++    source files), which it eats. Returns the path to the config file.
++    """
++    conf = SCRATCHDIR / 'test-rsyncd.conf'
++    pidfile = SCRATCHDIR / 'rsyncd.pid'
++    logfile = SCRATCHDIR / 'rsyncd.log'
++
++    my_uid = get_testuid()
++    root_uid = get_rootuid()
++    root_gid = get_rootgid()
++
++    if my_uid != root_uid:
++        # Non-root cannot specify uid/gid in rsyncd.conf.
++        uid_line = f"#uid = {root_uid}"
++        gid_line = f"#gid = {root_gid}"
++    else:
++        uid_line = f"uid = {root_uid}"
++        gid_line = f"gid = {root_gid}"
++
++    conf.write_text(f"""\
++# rsyncd configuration file autogenerated by rsyncfns.build_rsyncd_conf
++
++pid file = {pidfile}
++use chroot = no
++munge symlinks = no
++# Loopback only. In TCP mode the daemon is also bound to 127.0.0.1 (start_rsyncd
++# passes --address); in the default pipe mode there is no socket to guard.
++hosts allow = localhost 127.0.0.0/8
++log file = {logfile}
++transfer logging = yes
++# We don't define log format here so the test-hidden module defaults
++# to the internal static string (since we had a crash trying to tweak it).
++exclude = ? foobar.baz
++max verbosity = 4
++{uid_line}
++{gid_line}
++
++[test-from]
++\tpath = {FROMDIR}
++\tlog format = %i %h [%a] %m (%u) %l %f%L
++\tread only = yes
++\tcomment = r/o
++
++[test-to]
++\tpath = {TODIR}
++\tlog format = %i %h [%a] %m (%u) %l %f%L
++\tread only = no
++\tcomment = r/w
++
++[test-scratch]
++\tpath = {SCRATCHDIR}
++\tlog format = %i %h [%a] %m (%u) %l %f%L
++\tread only = no
++
++[test-hidden]
++\tpath = {FROMDIR}
++\tlist = no
++""")
++
++    ignore23 = SCRATCHDIR / 'ignore23'
++    ignore23.write_text(
++        '#!/bin/sh\n'
++        'if "${@}"; then exit; fi\n'
++        'ret=$?\n'
++        'if test $ret = 23; then exit; fi\n'
++        'exit $ret\n'
++    )
++    ignore23.chmod(0o755)
++
++    return conf
++
++
++def _set_pdeathsig():
++    """Linux: ask the kernel to SIGTERM us if our parent dies, so a kill -9 of
++    the test doesn't strand the rsyncd we spawned. No-op elsewhere."""
++    if not sys.platform.startswith('linux'):
++        return
++    try:
++        import ctypes
++        PR_SET_PDEATHSIG = 1
++        SIGTERM = 15
++        ctypes.CDLL('libc.so.6', use_errno=True).prctl(PR_SET_PDEATHSIG, SIGTERM)
++    except Exception:
++        pass
++
++
++def _stop_rsyncd(proc):
++    if proc.poll() is not None:
++        return
++    proc.terminate()
++    try:
++        proc.wait(timeout=5)
++    except subprocess.TimeoutExpired:
++        proc.kill()
++        proc.wait()
++
++
++def start_rsyncd(conf_path, port, rsync_cmd=None, stdin=subprocess.DEVNULL,
++                 address='127.0.0.1'):
++    """Spawn `rsync --daemon --no-detach --address=A --port=N --config=conf`
++    and return the Popen once the port accepts connections.
++
++    Bound to LOOPBACK ONLY: without --address, rsync --daemon binds 0.0.0.0 and
++    the test modules would be reachable from the whole LAN. Killed at exit.
++
++    Only reached from start_test_daemon() in TCP mode; the default pipe mode
++    never starts a listening daemon. Upstream also does cross-process port
++    locking for parallel runs -- runtests.sh is serial, so this doesn't.
++    """
++    if address not in ('127.0.0.1', '::1'):
++        test_fail("test daemon address is not loopback: %s" % address)
++    argv = split_rsync_cmd(rsync_cmd or RSYNC_PEER) + [
++        '--daemon', '--no-detach',
++        f'--address={address}',
++        f'--port={port}',
++        f'--config={conf_path}',
++    ]
++    proc = subprocess.Popen(argv, stdin=stdin, stdout=subprocess.DEVNULL,
++                            stderr=subprocess.DEVNULL, preexec_fn=_set_pdeathsig)
++    atexit.register(_stop_rsyncd, proc)
++
++    deadline = time.monotonic() + 10
++    last_err = None
++    while time.monotonic() < deadline:
++        if proc.poll() is not None:
++            test_fail("rsyncd exited before listening on port %d (status=%s)"
++                      % (port, proc.returncode))
++        try:
++            with socket.create_connection((address, port), timeout=0.5):
++                return proc
++        except OSError as e:
++            last_err = e
++            time.sleep(0.05)
++
++    _stop_rsyncd(proc)
++    test_fail("rsyncd never listened on %s:%d: %s" % (address, port, last_err))
++
++
++def start_test_daemon(conf_path, port, rsync_cmd=None, address='127.0.0.1'):
++    """Bring up the test daemon and return a URL prefix for client commands.
++
++    The single seam every daemon test uses. Build URLs as f"{prefix}module/path".
++
++      * DEFAULT -- no TCP socket at all. Sets RSYNC_CONNECT_PROG so the client
++        forks the daemon over a private stdio pipe; nothing is listening, so no
++        other local user can reach it. Returns 'rsync://localhost/'.
++      * RSYNC_TEST_USE_TCP=1 -- a real rsyncd on loopback. `port` is used only
++        in this mode.
++    """
++    daemon_cmd = rsync_cmd or RSYNC_PEER
++    if USE_TCP:
++        start_rsyncd(conf_path, port, daemon_cmd, address=address)
++        host = 'localhost' if address == '127.0.0.1' else '[%s]' % address
++        return 'rsync://%s:%d/' % (host, port)
++    # RSYNC_CONNECT_PROG is run by a shell, so every word has to survive
++    # re-parsing: a build path with a space would otherwise exec its prefix.
++    os.environ['RSYNC_CONNECT_PROG'] = (
++        '%s --config=%s --daemon'
++        % (rsync_path_arg(daemon_cmd), shlex.quote(str(conf_path))))
++    return 'rsync://localhost/'

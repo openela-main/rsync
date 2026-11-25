@@ -4,7 +4,7 @@
 Summary: A program for synchronizing files over a network
 Name: rsync
 Version: 3.2.7
-Release: 1%{?dist}
+Release: 4%{?dist}
 URL: https://rsync.samba.org/
 
 Source0: https://download.samba.org/pub/rsync/src/rsync-%{version}.tar.gz
@@ -32,23 +32,32 @@ BuildRequires: openssl-devel
 BuildRequires: libzstd-devel
 BuildRequires: git-core
 BuildRequires: automake
+BuildRequires: python3
 #Added virtual provide for zlib due to https://fedoraproject.org/wiki/Bundled_Libraries?rd=Packaging:Bundled_Libraries
 Provides: bundled(zlib) = 1.2.8
 License: GPLv3+
 
 #Added due to rhbz#1873975 - default-acls test fail on s390x due to libacl
-Patch1: rsync-3.2.2-runtests.patch
+Patch1:  rsync-3.2.2-runtests.patch
 #commonmark would be needed to generate manpage, so we simply copy it
-Patch2: rsync-3.2.5-rrsync-man.patch
+Patch2:  rsync-3.2.5-rrsync-man.patch
 # This is here for RHEL9 lifetime to avoid changes in defaults.
 # From RHEL10 this will have to be documented as a different
 # behaviour for compression.
-Patch8: rsync-3.2.5-default-compression.patch
-Patch9: rsync-3.2.7-ssh-askpass.patch
+Patch8:  rsync-3.2.5-default-compression.patch
+Patch9:  rsync-3.2.7-ssh-askpass.patch
 # adding a fix for the following issues as well so that rsync is able to
 # access legit directories such as /var/log and /var/run
 # https://github.com/RsyncProject/rsync/issues/1064
 Patch10: rsync-3.2.7-o_path-dir-traversal.patch
+# https://github.com/RsyncProject/rsync/commit/a7404a9a
+# https://github.com/RsyncProject/rsync/commit/0f599d36
+Patch11: rsync-3.2.7-fix-cve-2026-119741.patch
+# Tests for latest backports are written in python3 instead of bash
+# runtests.sh needs to pick up the .py files as well and be able to run those
+Patch12: rsync-3.2.7-runtests-python.patch
+# https://github.com/RsyncProject/rsync/commit/b70a61f3
+Patch13: rsync-3.2.7-max-alloc-overflow.patch
 
 %description
 Rsync uses a reliable algorithm to bring remote and host files into
@@ -135,16 +144,60 @@ install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
 %systemd_postun_with_restart rsyncd.service
 
 %changelog
-* Thu Aug 27 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.7-1
-- Resolves: RHEL-248836 - Rebase rsync to version 3.2.7 in RHEL9
+* Wed Nov 18 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.7-4
+- Bumping due to pipeline errors
+- Resolves: RHEL-279589
+- Resolves: RHEL-300764
 
-* Mon Jun 15 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-7.2
- - Fix integer overflow in compressed-token decoding (CVE-2026-43618)
- - Resolves: RHEL-174932
+* Thu Nov 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.7-3
+- rsync stack overflow reporting --max-alloc=SIZE has been exceeded
+- Resolves: RHEL-279589
 
-* Thu May 28 2026 RHEL Packaging Agent <redhat-ymir-agent@redhat.com> - 3.2.5-7.1
+* Thu Nov 12 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.7-2
+- DoS via crafted checksums during delta transfer (CVE-2026-119741)
+- Making it possible to run new python unit tests
+- Resolves: RHEL-300764
+
+* Mon Oct 26 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.7-1
+- Rebase rsync to version 3.2.7 in RHEL9
+- Resolves: RHEL-245349 - Directory escape via TOCTOU race condition in rrsync (CVE-2026-53783)
+- Resolves: RHEL-247077 - Unauthorized File Access via Symlink Module Root (CVE-2026-53784)
+- Resolves: RHEL-244614 - Arbitrary file write via path traversal in --relative mode (CVE-2026-53785)
+- Resolves: RHEL-255150 - Arbitrary file deletion via malicious file list (CVE-2026-53789)
+- Resolves: RHEL-246100 - Command Injection via Multiple Code Paths (CVE-2026-53790)
+- Resolves: RHEL-246063 - Daemon IP Spoofing via PROXY Protocol Header (CVE-2026-53791)
+- Resolves: RHEL-246513 - Path Confinement Bypass in Chroot Mode (CVE-2026-53793)
+- Resolves: RHEL-246203 - DoS via --max-alloc=0 logic error (CVE-2026-53794)
+- Resolves: RHEL-246175 - Arbitrary file write via --temp-dir or --link-dest options (CVE-2026-53795)
+- Resolves: RHEL-255073 - Arbitrary File Read via Symlink Following (CVE-2026-53802)
+- Resolves: RHEL-244726 - Local Privilege Escalation via Symlink Following (CVE-2026-53803)
+- Resolves: RHEL-246149 - Access Control Bypass via DNS Resolution Failure (CVE-2026-70452)
+- Resolves: RHEL-244794 - DoS via Algorithmic Complexity (CVE-2026-70453)
+- Resolves: RHEL-247293 - TLS Cert Validation Bypass allows interception of encrypted sessions (CVE-2026-70454)
+- Resolves: RHEL-245207 - Heap Out-of-Bounds Write via crafted argument list (CVE-2026-70456)
+- Resolves: RHEL-255118 - Memory corruption via out-of-bounds write in size parsing (CVE-2026-70457)
+- Resolves: RHEL-246865 - Memory corruption via crafted file entries (CVE-2026-70458)
+- Resolves: RHEL-246843 - Path Traversal via --partial-dir/--backup-dir Symlink (CVE-2026-70460)
+- Resolves: RHEL-245324 - Information disclosure and denial of service via crafted files-from entry (CVE-2026-70461)
+- Resolves: RHEL-247133 - Authorization bypass via `auth users` directive parsing (CVE-2026-70463)
+- Resolves: RHEL-246963 - DoS via handshake stall (CVE-2026-70464)
+
+* Tue Jun 23 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-9
+- Fix integer overflow in compressed-token decoding (CVE-2026-43618)
+- Resolves: RHEL-174939
+
+* Tue Jun 23 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-8
 - Fix TOCTOU symlink race in daemon no-chroot mode (CVE-2026-29518)
-- Resolves: RHEL-174952
+- Resolves: RHEL-174953
+
+* Mon May 11 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-7
+- Resolves: RHEL-173468 - CVE-2024-12086 rsync server leaks arbitrary client files
+
+* Mon May 04 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-6
+- Resolves: RHEL-169151 - CVE-2026-41035 - Use-after-free vulnerability in extended attribute handling
+
+* Tue Apr 07 2026 Michal Ruprich <mruprich@redhat.com> - 3.2.5-5
+- Resolves: RHEL-152536 - CVE-2025-10158 Out of bounds array access via negative index
 
 * Thu Oct 09 2025 Michal Ruprich <mruprich@redhat.com> - 3.2.5-4
 - Resolves: RHEL-104404 - Do not clear DISPLAY unconditionally
